@@ -1,0 +1,90 @@
+# ==========================================================================
+#  GROWW ALGO — STRATEGY CONFIGURATION
+#  This file is the single source of truth for the bot's rules.
+#  Edit it and the next scan picks the changes up automatically.
+#  All trading is SIMULATED (paper). No real order is ever placed.
+# ==========================================================================
+
+mode: paper                      # paper | live  (live is blocked until broker is wired)
+
+engine:
+  enabled: true                  # auto-start the scan/trade loop with the API
+  autotrade: true                # false = keep scanning/signalling but never open a paper trade
+  scan_interval_sec: 300         # full market scan every 5 minutes
+  quote_refresh_sec: 20          # position mark-to-market refresh
+  entry_window: ["09:20", "14:45"]
+  square_off: "15:20"
+  timezone: "Asia/Kolkata"
+  # auto = Groww first, Yahoo only if Groww refuses. groww = never fall back.
+  data_source: auto
+  # Optional NSE holidays (YYYY-MM-DD). Weekends are always skipped.
+  holidays: []
+
+account:
+  starting_capital: 10000        # Rs. 10,000 (matches your Groww intraday plan)
+  max_positions: 2
+  risk_per_trade: 100            # Rs. risked per trade (stop-distance sizing)
+  max_daily_loss: 200            # stop opening new trades after this loss
+  max_position_pct: 45           # max % of equity in one name
+
+costs:
+  brokerage_per_order: 20        # Rs. cap per executed order
+  brokerage_pct: 0.03            # Groww intraday equity: 0.03% of turnover or the cap, whichever is lower
+  exchange_txn_pct: 0.00297      # NSE transaction charge
+  sebi_pct: 0.0001               # SEBI turnover fee (Rs. 10 per crore)
+  stamp_buy_pct: 0.003           # stamp duty, buy side only
+  gst_pct: 18                    # GST on brokerage + exchange + SEBI
+  slippage_pct: 0.05             # adverse fill per side (%)
+  stt_sell_pct: 0.025            # STT on sell side (%)
+
+universe:
+  file: config/nifty500.txt
+  max_symbols: 140
+  min_price: 30
+  min_avg_daily_value: 20000000  # Rs. 2 crore average daily turnover
+  exclude: []                    # e.g. ["YESBANK", "IDEA"]
+
+scan:
+  max_results: 200               # rows returned to the dashboard (all ranks, 0 = all)
+
+# --- Entry rules -----------------------------------------------------------
+entry:
+  min_score: 65                  # 0-100 composite score required
+  min_confirmations: 3           # how many factor buckets must score > 50
+  require_trend: true            # price must be above EMA20 and EMA50
+  require_above_vwap: true       # intraday longs only above VWAP
+  breakout_lookback: 20          # bars used for breakout high
+  min_relative_volume: 1.4       # volume vs 20-bar average
+  max_vwap_extension_pct: 2.5    # don't chase more than this % above VWAP
+  avoid_first_minutes: 5         # skip the opening noise
+  min_atr_pct: 0.4               # stock must actually move
+  max_atr_pct: 3.5               # ...but not be chaos
+  min_risk_reward: 1.8           # reject setups whose target/stop is worse
+
+# --- Exit rules ------------------------------------------------------------
+exit:
+  stop_atr_mult: 1.2             # initial stop = entry - 1.2 * ATR
+  target_r_mult: 2.0             # first target = entry + 2R
+  trailing_atr_mult: 0.8         # trailing stop once trade is +1R
+  trail_after_r: 1.0
+  time_stop_minutes: 180         # force exit after 3 hours
+  move_stop_to_be_at_r: 0.8      # move stop to break-even at +0.8R
+  square_off: "15:20"            # hard MIS square-off
+
+# --- Composite scoring weights (must total 100) ----------------------------
+scoring:
+  weights:
+    trend: 22
+    momentum: 20
+    pattern: 20
+    volume: 13
+    quality: 15
+    risk: 10
+  qualified_score: 65
+  watchlist_score: 55
+
+# --- Fundamentals (optional enrichment for the quality bucket) -------------
+fundamentals:
+  enabled: true
+  source: yfinance               # Groww has no fundamentals; yfinance is free
+  refresh_hours: 24

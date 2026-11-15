@@ -1,0 +1,787 @@
+"""FastAPI surface for the dashboard."""
+from __future__ import annotations
+
+import datetime as dt
+import os
+import re
+import secrets
+import threading
+import time
+from pathlib import Path
+
+import yaml
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+from engine import backtest, broker, groww_auth, groww_data, ledger, marketdata, scanner, universe
+from engine.engine import ENGINE
+from engine.settings import BASE_DIR, CACHE_DIR, CONFIG_DIR, CONFIG_PATH, cfg, load_config, now_ist
+
+app = FastAPI(title="Groww Algo", version="1.0.0",
+              description="Intraday market scanner + automatic paper trader")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+class ScanRequest(BaseModel):
+    autotrade: bool = False
+
+
+class StrategySave(BaseModel):
+    yaml: str
+
+
+class CredentialsSave(BaseModel):
+    api_key: str | None = None
+    api_secret: str | None = None
+    totp_secret: str | None = None
+
+
+class ConfigValue(BaseModel):
+    section: str
+    key: str
+    value: float | int | bool | str
+
+
+class ResetRequest(BaseModel):
+    challenge_id: str
+    answer: str
+    scope: str = "history"
+
+
+class BacktestRequest(BaseModel):
+    days: int = 22
+    preset: str | None = None
+    overrides: dict | None = None
+    limit: int = 60
+
+
+@app.on_event("startup")
+def _startup() -> None:
+    ledger.init_db()
+    ledger.ensure_day()
+    if cfg("engine", "enabled", default=True):
+        ENGINE.start()
+
+
+@app.on_event("shutdown")
+def _shutdown() -> None:
+    ENGINE.stop()
+
+
+# --------------------------------------------------------------------------
+# status / overview
+# --------------------------------------------------------------------------
+@app.get("/api/health")
+def health() -> dict:
+    return {"ok": True, "ts": now_ist().isoformat(timespec="seconds")}
+
+
+@app.get("/api/status")
+def status() -> dict:
+    info = ENGINE.status()
+    info["config"] = {
+        "mode": cfg("mode", default="paper"),
+        "capital": cfg("account", "starting_capital", default=10000),
+        "risk_per_trade": cfg("account", "risk_per_trade", default=100),
+        "max_positions": cfg("account", "max_positions", default=2),
+        "max_daily_loss": cfg("account", "max_daily_loss", default=200),
+        "min_score": cfg("entry", "min_score", default=65),
+        "scan_interval_sec": cfg("engine", "scan_interval_sec", default=300),
+        "autotrade": bool(cfg("engine", "autotrade", default=True)),
+        "data_source": marketdata.preference(),
+        "universe_size": len(universe.load_symbols()),
+    }
+    info["feed"] = marketdata.health()
+    return info
+
+
+@app.get("/api/overview")
+def overview() -> dict:
+    return ledger.overview()
+
+
+@app.get("/api/calendar")
+def calendar(year: int = Query(default=None), month: int = Query(default=None)) -> dict:
+    now = now_ist()
+    year = year or now.year
+    month = month or now.month
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="month must be 1-12")
+    days = ledger.calendar_month(year, month)
+    return {
+        "year": year,
+        "month": month,
+        "days": days,
+        "month_pnl": round(sum(d.get("pnl", 0) for d in days), 2),
+        "sessions": len(days),
+        "green": sum(1 for d in days if d.get("pnl", 0) > 0),
+        "red": sum(1 for d in days if d.get("pnl", 0) < 0),
+        "demo": ledger.is_demo(),
+    }
+
+
+@app.get("/api/equity")
+def equity(limit: int = 400) -> dict:
+    curve = ledger.equity_curve(limit)
+    return {"curve": curve, "demo": ledger.is_demo()}
+
+
+# --------------------------------------------------------------------------
+# scanner
+# --------------------------------------------------------------------------
+@app.get("/api/scan")
+def latest_scan() -> dict:
+    cap = int(cfg("scan", "max_results", default=200))
+    if ENGINE.last_scan:
+        data = ENGINE.last_scan
+        return {
+            "ts": data.get("ts"), "source": data.get("source"),
+            "scanned": data.get("scanned"), "eligible": data.get("eligible"),
+            "qualified": data.get("qualified"), "watchlist": data.get("watchlist"),
+            "duration_ms": data.get("duration_ms"),
+            "results": (data.get("results") or [])[:cap],
+            "signals": data.get("signals", []),
+            "trade_errors": data.get("trade_errors", []),
+            "errors": data.get("errors", []),
+        }
+    stored = ledger.latest_scan()
+    run = stored.get("run") or {}
+    return {
+        "ts": run.get("ts"), "source": run.get("source"),
+        "scanned": run.get("scanned"), "qualified": run.get("qualified"),
+        "watchlist": run.get("watchlist"), "duration_ms": run.get("duration_ms"),
+        "results": [], "signals": stored.get("signals", []),
+        "trade_errors": [], "errors": [],
+    }
+
+
+@app.post("/api/scan")
+def run_scan(req: ScanRequest) -> dict:
+    cap = int(cfg("scan", "max_results", default=200))
+    result = ENGINE.scan_now(autotrade=req.autotrade)
+    return {
+        "ts": result.get("ts"), "source": result.get("source"),
+        "scanned": result.get("scanned"), "eligible": result.get("eligible"),
+        "qualified": result.get("qualified"), "watchlist": result.get("watchlist"),
+        "duration_ms": result.get("duration_ms"),
+        "results": (result.get("results") or [])[:cap],
+        "signals": result.get("signals", []),
+        "trade_errors": result.get("trade_errors", []),
+        "errors": result.get("errors", []),
+    }
+
+
+@app.get("/api/signals")
+def signals(day: str | None = None) -> dict:
+    day = day or now_ist().date().isoformat()
+    return {"day": day, "signals": ledger.signals_for_day(day)}
+
+
+# --------------------------------------------------------------------------
+# portfolio
+# --------------------------------------------------------------------------
+@app.get("/api/positions")
+def positions() -> dict:
+    rows = ledger.positions()
+    price_map = marketdata.prices([p["symbol"] for p in rows]) if rows else {}
+    if price_map:
+        broker.mark(price_map)
+        rows = ledger.positions()
+    acc = ledger.account()
+    return {
+        "positions": rows,
+        "cash": round(float(acc.get("cash", 0)), 2),
+        "equity": ledger.current_equity(),
+    }
+
+
+@app.get("/api/trades")
+def trades(limit: int = 200, symbol: str | None = None) -> dict:
+    return {"trades": ledger.trades(limit=limit, symbol=symbol)}
+
+
+@app.post("/api/positions/{trade_id}/close")
+def close_position(trade_id: int) -> dict:
+    rows = {p["trade_id"]: p for p in ledger.positions()}
+    pos = rows.get(trade_id)
+    if not pos:
+        raise HTTPException(status_code=404, detail="position not found")
+    price_map = marketdata.prices([pos["symbol"]])
+    price = price_map.get(pos["symbol"]) or float(pos["last_price"] or pos["avg_price"])
+    order = broker.sell(trade_id, float(price), "MANUAL")
+    if not order.get("ok"):
+        raise HTTPException(status_code=400, detail=order.get("error"))
+    ledger.snapshot_equity()
+    return order
+
+
+# --------------------------------------------------------------------------
+# engine controls
+# --------------------------------------------------------------------------
+@app.post("/api/engine/start")
+def engine_start() -> dict:
+    return ENGINE.start()
+
+
+@app.post("/api/engine/stop")
+def engine_stop() -> dict:
+    return ENGINE.stop()
+
+
+@app.post("/api/engine/cycle")
+def engine_cycle() -> dict:
+    return ENGINE.cycle()
+
+
+# --------------------------------------------------------------------------
+# config / universe
+# --------------------------------------------------------------------------
+@app.get("/api/config")
+def config() -> dict:
+    return {
+        "config": load_config(force=True),
+        "yaml": CONFIG_PATH.read_text(encoding="utf-8"),
+        "path": str(CONFIG_PATH),
+    }
+
+
+REQUIRED_SECTIONS = ("engine", "account", "costs", "universe", "entry", "exit", "scoring")
+
+
+def _validate_strategy(text: str) -> dict:
+    """Parse + sanity-check a strategy document before it is written."""
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise HTTPException(status_code=400, detail=f"YAML parse error: {exc}") from exc
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="The strategy must be a YAML mapping")
+    missing = [s for s in REQUIRED_SECTIONS if not isinstance(data.get(s), dict)]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing or invalid sections: {', '.join(missing)}")
+
+    def number(section: str, key: str) -> float | None:
+        value = (data.get(section) or {}).get(key)
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=f"{section}.{key} must be a number") from exc
+
+    checks = [
+        ("account", "starting_capital", 1, None),
+        ("account", "risk_per_trade", 0.01, None),
+        ("account", "max_positions", 1, 20),
+        ("account", "max_daily_loss", 0, None),
+        ("account", "max_position_pct", 1, 100),
+        ("entry", "min_score", 0, 100),
+        ("entry", "min_confirmations", 0, 6),
+        ("entry", "min_relative_volume", 0, None),
+        ("entry", "min_risk_reward", 0, None),
+        ("exit", "target_r_mult", 0.1, None),
+        ("exit", "time_stop_minutes", 1, None),
+        ("engine", "scan_interval_sec", 15, None),
+        ("costs", "brokerage_per_order", 0, None),
+        ("costs", "brokerage_pct", 0, 100),
+        ("costs", "gst_pct", 0, 100),
+        ("costs", "slippage_pct", 0, 100),
+    ]
+    for section, key, low, high in checks:
+        value = number(section, key)
+        if value is None:
+            continue
+        if low is not None and value < low:
+            raise HTTPException(status_code=400, detail=f"{section}.{key} must be >= {low}")
+        if high is not None and value > high:
+            raise HTTPException(status_code=400, detail=f"{section}.{key} must be <= {high}")
+
+    weights = (data.get("scoring") or {}).get("weights") or {}
+    if weights:
+        try:
+            total = sum(float(v) for v in weights.values())
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="scoring.weights must all be numbers") from exc
+        if abs(total - 100) > 0.01:
+            raise HTTPException(status_code=400,
+                                detail=f"scoring.weights must total 100 (currently {total:g})")
+
+    square = (data.get("exit") or {}).get("square_off", "15:20")
+    try:
+        hh, mm = str(square).split(":")[:2]
+        if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="exit.square_off must be HH:MM") from exc
+
+    source = str((data.get("engine") or {}).get("data_source", "auto")).strip().lower()
+    if source not in ("auto", "groww", "yahoo"):
+        raise HTTPException(status_code=400,
+                            detail="engine.data_source must be one of: auto, groww, yahoo")
+    return data
+
+
+def _write_strategy(text: str) -> None:
+    backup = CONFIG_PATH.with_suffix(".yaml.bak")
+    if CONFIG_PATH.exists():
+        backup.write_text(CONFIG_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    tmp = CONFIG_PATH.with_suffix(".yaml.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, CONFIG_PATH)
+
+
+@app.put("/api/config")
+def config_save(req: StrategySave) -> dict:
+    _validate_strategy(req.yaml)
+    _write_strategy(req.yaml)
+    return {
+        "ok": True,
+        "config": load_config(force=True),
+        "yaml": CONFIG_PATH.read_text(encoding="utf-8"),
+        "message": "Saved. The next scan uses the new rules — no restart needed.",
+    }
+
+
+@app.post("/api/config/default")
+def config_default() -> dict:
+    default_path = CONFIG_DIR / "strategy.default.yaml"
+    if not default_path.exists():
+        raise HTTPException(status_code=404, detail="strategy.default.yaml is missing")
+    text = default_path.read_text(encoding="utf-8")
+    _validate_strategy(text)
+    _write_strategy(text)
+    return {
+        "ok": True,
+        "config": load_config(force=True),
+        "yaml": CONFIG_PATH.read_text(encoding="utf-8"),
+        "message": "Default strategy restored.",
+    }
+
+
+def _format_scalar(value) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return str(int(number)) if number.is_integer() else f"{number:g}"
+    return f'"{value}"'
+
+
+def _set_scalar(text: str, section: str, key: str, value) -> str:
+    """Replace one scalar in-place, preserving indentation and inline comments."""
+    lines = text.splitlines()
+    section_re = re.compile(rf"^{re.escape(section)}\s*:\s*(?:#.*)?$")
+    key_re = re.compile(
+        rf"^(?P<indent>[ \t]+)(?P<key>{re.escape(key)})(?P<sep>\s*:\s*)"
+        rf"(?P<val>[^#]*?)(?P<tail>\s*(?:#.*)?)$"
+    )
+    in_section = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if line and not line[0].isspace() and stripped and not stripped.startswith("#"):
+            in_section = bool(section_re.match(line))
+            continue
+        if not in_section:
+            continue
+        match = key_re.match(line)
+        if match:
+            lines[index] = (
+                f"{match.group('indent')}{match.group('key')}{match.group('sep')}"
+                f"{_format_scalar(value)}{match.group('tail')}"
+            )
+            return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
+    raise HTTPException(status_code=404, detail=f"{section}.{key} not found in strategy.yaml")
+
+
+@app.post("/api/config/value")
+def config_value(req: ConfigValue) -> dict:
+    text = CONFIG_PATH.read_text(encoding="utf-8")
+    updated = _set_scalar(text, req.section, req.key, req.value)
+    _validate_strategy(updated)
+    _write_strategy(updated)
+    return {
+        "ok": True,
+        "config": load_config(force=True),
+        "yaml": updated,
+        "message": f"{req.section}.{req.key} = {req.value}",
+    }
+
+
+@app.post("/api/config/parse")
+def config_parse(req: StrategySave) -> dict:
+    """Validate YAML without saving — used for the live editor preview."""
+    return {"ok": True, "config": _validate_strategy(req.yaml)}
+
+
+# --------------------------------------------------------------------------
+# backtest
+# --------------------------------------------------------------------------
+def _merge_overrides(base: dict | None, extra: dict | None) -> dict:
+    out: dict = {}
+    for section, values in (base or {}).items():
+        out[section] = dict(values) if isinstance(values, dict) else values
+    for section, values in (extra or {}).items():
+        if isinstance(values, dict):
+            node = dict(out.get(section) or {})
+            node.update(values)
+            out[section] = node
+        else:
+            out[section] = values
+    return out
+
+
+@app.get("/api/backtest/presets")
+def backtest_presets() -> dict:
+    return {"presets": [{"id": key, **value} for key, value in backtest.PRESETS.items()]}
+
+
+@app.post("/api/backtest")
+def backtest_run(req: BacktestRequest) -> dict:
+    overrides: dict | None = req.overrides
+    if req.preset and req.preset in backtest.PRESETS:
+        overrides = _merge_overrides(backtest.PRESETS[req.preset]["overrides"], req.overrides)
+    limit = max(5, min(int(req.limit), 200))
+    symbols = universe.load_symbols()[:limit]
+    result = backtest.run(days=req.days, overrides=overrides, symbols=symbols)
+    result["preset"] = req.preset
+    result["limit"] = limit
+    return result
+
+
+# --------------------------------------------------------------------------
+# Groww credentials (write-only; secrets are never returned)
+# --------------------------------------------------------------------------
+@app.get("/api/credentials")
+def credentials_status() -> dict:
+    status = groww_auth.status()
+    health = marketdata.health(force=True)
+    return {
+        "status": status,
+        "health": health,
+        "env_path": str(groww_auth.ENV_PATH),
+    }
+
+
+@app.post("/api/credentials")
+def credentials_save(req: CredentialsSave) -> dict:
+    api_key = (req.api_key or "").strip() or None
+    api_secret = (req.api_secret or "").strip() or None
+    totp_secret = (req.totp_secret or "").strip() or None
+    if not any((api_key, api_secret, totp_secret)):
+        raise HTTPException(status_code=400, detail="Nothing to save")
+    if api_secret and totp_secret:
+        raise HTTPException(status_code=400,
+                            detail="Use either the API secret or the TOTP secret, not both")
+    groww_auth.save_credentials(api_key=api_key, api_secret=api_secret, totp_secret=totp_secret)
+    health = marketdata.health(force=True)
+    return {
+        "ok": bool(health.get("ok")),
+        "status": groww_auth.status(),
+        "health": health,
+        "message": health.get("message"),
+    }
+
+
+@app.post("/api/credentials/test")
+def credentials_test() -> dict:
+    groww_auth.invalidate()
+    health = marketdata.health(force=True)
+    return {"ok": bool(health.get("ok")), "status": groww_auth.status(), "health": health}
+
+
+@app.get("/api/groww/portfolio")
+def groww_portfolio(force: bool = False) -> dict:
+    """Live Groww portfolio: demat holdings, intraday positions and orders."""
+    auth = groww_auth.status()
+    feed = marketdata.health(force=bool(force))
+    errors: dict[str, str] = {}
+
+    account = None
+    try:
+        account = groww_data.user_detail(ttl=0 if force else 300)
+    except Exception as exc:  # includes GrowwUnavailable
+        errors["account"] = str(exc)
+
+    holdings_raw: list[dict] = []
+    try:
+        holdings_raw = groww_data.holdings(ttl=0 if force else 60)
+    except Exception as exc:
+        errors["holdings"] = str(exc)
+
+    positions_raw: list[dict] = []
+    try:
+        positions_raw = groww_data.positions(ttl=0 if force else 20)
+    except Exception as exc:
+        errors["positions"] = str(exc)
+
+    orders_raw: list[dict] = []
+    try:
+        orders_raw = groww_data.orders(ttl=0 if force else 20)
+    except Exception as exc:
+        errors["orders"] = str(exc)
+
+    symbols = sorted({row["symbol"] for row in holdings_raw}
+                     | {row["symbol"] for row in positions_raw})
+    price_map: dict[str, dict] = {}
+    if symbols:
+        try:
+            price_map = {q["symbol"]: q for q in marketdata.quotes(symbols)}
+        except Exception:
+            price_map = {}
+
+    def price_of(symbol: str) -> tuple[float | None, dict]:
+        q = price_map.get(symbol)
+        if not q:
+            return None, {}
+        price = q.get("price")
+        return (float(price) if price is not None else None), q
+
+    holdings: list[dict] = []
+    invested = value = day_pnl_total = 0.0
+    missing_prices: list[str] = []
+    for row in holdings_raw:
+        price, q = price_of(row["symbol"])
+        qty = float(row["quantity"])
+        avg = float(row["average_price"])
+        cost = qty * avg
+        invested += cost
+        if price is None:
+            missing_prices.append(row["symbol"])
+            holdings.append({**row, "price": None, "price_source": None,
+                             "delayed": True, "value": None, "pnl": None,
+                             "pnl_pct": None, "day_change": None, "day_pnl": None,
+                             "weight_pct": None})
+            continue
+        current = qty * price
+        value += current
+        pnl = current - cost
+        change = q.get("change")
+        day_change = float(change) if change is not None else None
+        day_pnl = qty * day_change if day_change is not None else None
+        if day_pnl is not None:
+            day_pnl_total += day_pnl
+        holdings.append({
+            **row,
+            "price": round(price, 2),
+            "price_source": q.get("source"),
+            "delayed": bool(q.get("delayed", True)),
+            "value": round(current, 2),
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl / cost * 100, 2) if cost else None,
+            "day_change": round(day_change, 2) if day_change is not None else None,
+            "day_pnl": round(day_pnl, 2) if day_pnl is not None else None,
+            "weight_pct": None,
+        })
+
+    for row in holdings:
+        if row.get("value") is not None and value > 0:
+            row["weight_pct"] = round(float(row["value"]) / value * 100, 2)
+
+    positions: list[dict] = []
+    unrealised_total = 0.0
+    for row in positions_raw:
+        price, q = price_of(row["symbol"])
+        qty = float(row["quantity"])
+        net = float(row["net_price"])
+        entry = qty * net
+        if price is None:
+            positions.append({**row, "price": None, "price_source": None,
+                              "delayed": True, "value": round(entry, 2),
+                              "unrealised_pnl": None, "unrealised_pct": None})
+            continue
+        current = qty * price
+        upnl = current - entry
+        unrealised_total += upnl
+        positions.append({
+            **row,
+            "price": round(price, 2),
+            "price_source": q.get("source"),
+            "delayed": bool(q.get("delayed", True)),
+            "value": round(current, 2),
+            "unrealised_pnl": round(upnl, 2),
+            "unrealised_pct": round(upnl / entry * 100, 2) if entry else None,
+        })
+
+    total_pnl = value - invested if value else 0.0
+    summary = {
+        "holdings_count": len(holdings),
+        "positions_count": len(positions),
+        "orders_count": len(orders_raw),
+        "invested": round(invested, 2),
+        "current_value": round(value, 2) if value else 0.0,
+        "total_pnl": round(total_pnl, 2),
+        "total_pnl_pct": round(total_pnl / invested * 100, 2) if invested else 0.0,
+        "day_pnl": round(day_pnl_total, 2),
+        "unrealised_pnl": round(unrealised_total, 2),
+        "missing_prices": missing_prices,
+        "priced_by": sorted({q.get("source") for q in price_map.values() if q.get("source")}),
+    }
+
+    return {
+        "ok": account is not None and not errors.get("holdings"),
+        "errors": errors,
+        "account": {
+            "ucc": (account or {}).get("ucc"),
+            "segments": (account or {}).get("active_segments") or [],
+            "nse_enabled": bool((account or {}).get("nse_enabled")),
+            "bse_enabled": bool((account or {}).get("bse_enabled")),
+        } if account else None,
+        "holdings": holdings,
+        "positions": positions,
+        "orders": orders_raw,
+        "summary": summary,
+        "auth": {
+            "state": auth.get("state"),
+            "message": auth.get("message"),
+            "auth_mode": auth.get("auth_mode"),
+            "token_cached": auth.get("token_cached"),
+            "token_expiry": auth.get("token_expiry"),
+            "needs_daily_approval": auth.get("needs_daily_approval"),
+            "api_key_hint": auth.get("api_key_hint"),
+        },
+        "feed": {
+            "preference": feed.get("preference"),
+            "active": feed.get("active"),
+            "ok": feed.get("ok"),
+            "portfolio_ok": feed.get("portfolio_ok"),
+            "live_data": feed.get("live_data"),
+            "state": feed.get("state"),
+            "message": feed.get("message"),
+            "fallback_reason": feed.get("fallback_reason"),
+            "checked_at": feed.get("checked_at"),
+        },
+        "as_of": now_ist().isoformat(timespec="seconds"),
+    }
+
+
+# --------------------------------------------------------------------------
+# Full reset, guarded by a one-time typed captcha
+# --------------------------------------------------------------------------
+_reset_lock = threading.Lock()
+_reset_challenges: dict[str, dict] = {}
+_RESET_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+_RESET_TTL_SEC = 300
+_RESET_MAX_ATTEMPTS = 5
+
+
+@app.post("/api/reset/challenge")
+def reset_challenge() -> dict:
+    code = "".join(secrets.choice(_RESET_ALPHABET) for _ in range(6))
+    challenge_id = secrets.token_urlsafe(18)
+    now = time.time()
+    with _reset_lock:
+        for key in [k for k, v in _reset_challenges.items() if v["expires"] < now]:
+            _reset_challenges.pop(key, None)
+        _reset_challenges[challenge_id] = {
+            "code": f"RESET-{code}",
+            "expires": now + _RESET_TTL_SEC,
+            "attempts": 0,
+        }
+    return {
+        "challenge_id": challenge_id,
+        "prompt": f"RESET-{code}",
+        "expires_in": _RESET_TTL_SEC,
+    }
+
+
+def _clear_market_cache() -> int:
+    removed = 0
+    for path in CACHE_DIR.glob("*.pkl"):
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            continue
+    with groww_data._cache_lock:
+        groww_data._cache.clear()
+    return removed
+
+
+@app.post("/api/reset")
+def reset_everything(req: ResetRequest) -> dict:
+    now = time.time()
+    with _reset_lock:
+        entry = _reset_challenges.get(req.challenge_id)
+        if not entry or entry["expires"] < now:
+            _reset_challenges.pop(req.challenge_id, None)
+            raise HTTPException(status_code=400, detail="Confirmation expired. Start again.")
+        if req.answer.strip().upper() != entry["code"]:
+            entry["attempts"] += 1
+            if entry["attempts"] >= _RESET_MAX_ATTEMPTS:
+                _reset_challenges.pop(req.challenge_id, None)
+                raise HTTPException(status_code=400, detail="Too many wrong codes. Start again.")
+            left = _RESET_MAX_ATTEMPTS - entry["attempts"]
+            raise HTTPException(status_code=400, detail=f"Code does not match. {left} tries left.")
+        _reset_challenges.pop(req.challenge_id, None)
+
+    scope = req.scope if req.scope in ("history", "factory") else "history"
+    if scope == "factory":
+        default_path = CONFIG_DIR / "strategy.default.yaml"
+        if not default_path.exists():
+            raise HTTPException(status_code=404, detail="strategy.default.yaml is missing")
+        _write_strategy(default_path.read_text(encoding="utf-8"))
+        load_config(force=True)
+
+    capital = float(cfg("account", "starting_capital", default=10000))
+    ledger.reset(starting_capital=capital, demo=False)
+    removed = _clear_market_cache()
+    marketdata.health(force=True)
+
+    ENGINE.last_scan = None
+    ENGINE.last_scan_at = None
+    ENGINE.next_scan_at = None
+    ENGINE.last_error = None
+
+    return {
+        "ok": True,
+        "scope": scope,
+        "starting_capital": capital,
+        "cache_files_cleared": removed,
+        "message": ("Factory reset complete: history, caches and strategy.yaml are back to defaults."
+                    if scope == "factory" else
+                    "History and caches cleared. Starting fresh from the configured capital."),
+        "status": ENGINE.status(),
+        "overview": ledger.overview(),
+    }
+
+
+@app.get("/api/universe")
+def universe_list() -> dict:
+    return {"symbols": universe.load_symbols()}
+
+
+# --------------------------------------------------------------------------
+# optional static frontend (single-port production mode)
+# --------------------------------------------------------------------------
+DIST = BASE_DIR / "frontend" / "dist"
+if DIST.exists():
+    app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+
+    @app.get("/")
+    def index():
+        return FileResponse(DIST / "index.html")
+
+    @app.get("/{path:path}")
+    def spa(path: str):
+        candidate = DIST / path
+        if candidate.exists() and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(DIST / "index.html")
+else:
+    @app.get("/")
+    def root():
+        return JSONResponse({
+            "name": "Groww Algo API",
+            "docs": "/docs",
+            "hint": "Run the React app from frontend/ (npm run dev) or build it to frontend/dist.",
+        })

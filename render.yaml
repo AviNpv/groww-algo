@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: groww-algo-backend
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn engine.api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      PORT: [10000]

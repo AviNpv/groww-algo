@@ -1,0 +1,597 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import type {
+  CalendarResponse,
+  EquityPoint,
+  Overview,
+  PositionsResponse,
+  ScanResponse,
+  ScanRow,
+  Status,
+  Trade,
+} from './types'
+import { api, money, moneySigned, pct, timeOnly } from './api'
+import PnlCalendar from './components/PnlCalendar'
+import EquityCurve from './components/EquityCurve'
+import ScanTable from './components/ScanTable'
+import TradesTable from './components/TradesTable'
+import SymbolDrawer from './components/SymbolDrawer'
+import SettingsPanel from './components/SettingsPanel'
+import GrowwPortfolio from './components/GrowwPortfolio'
+
+type Tab = 'overview' | 'scanner' | 'positions' | 'trades' | 'portfolio' | 'settings'
+
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'scanner', label: 'Scanner' },
+  { id: 'positions', label: 'Positions' },
+  { id: 'trades', label: 'Trades' },
+  { id: 'portfolio', label: 'Groww Portfolio' },
+  { id: 'settings', label: 'Settings' },
+]
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>('overview')
+  const [status, setStatus] = useState<Status | null>(null)
+  const [overview, setOverview] = useState<Overview | null>(null)
+  const [calendar, setCalendar] = useState<CalendarResponse | null>(null)
+  const [curve, setCurve] = useState<EquityPoint[]>([])
+  const [scan, setScan] = useState<ScanResponse | null>(null)
+  const [positions, setPositions] = useState<PositionsResponse | null>(null)
+  const [trades, setTrades] = useState<Trade[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [calTick, setCalTick] = useState(0)
+  const [autotrade, setAutotrade] = useState(false)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  const [selectedRow, setSelectedRow] = useState<ScanRow | null>(null)
+  const [scanFilter, setScanFilter] = useState('')
+  const [scanStatus, setScanStatus] = useState('ALL')
+  const [tradeFilter, setTradeFilter] = useState('')
+  const [month, setMonth] = useState(() => {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() + 1 }
+  })
+
+  const loadCore = useCallback(async () => {
+    const results = await Promise.allSettled([
+      api.status(),
+      api.overview(),
+      api.scan(),
+      api.positions(),
+      api.equity(400),
+    ])
+    const [s, o, sc, p, eq] = results
+    if (s.status === 'fulfilled') setStatus(s.value)
+    if (o.status === 'fulfilled') setOverview(o.value)
+    if (sc.status === 'fulfilled') setScan(sc.value)
+    if (p.status === 'fulfilled') setPositions(p.value)
+    if (eq.status === 'fulfilled') setCurve(eq.value.curve)
+    if (results.every((r) => r.status === 'rejected')) {
+      setError('Backend not reachable. Start it with: .venv\\Scripts\\python.exe -m uvicorn engine.api:app --port 8000')
+    } else {
+      setError(null)
+    }
+  }, [])
+
+  const loadTrades = useCallback(async () => {
+    try {
+      const result = await api.trades(300)
+      setTrades(result.trades)
+    } catch {
+      /* the core loader already surfaces backend errors */
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadCore()
+    void loadTrades()
+    const core = window.setInterval(() => void loadCore(), 15000)
+    const tradeTimer = window.setInterval(() => void loadTrades(), 30000)
+    return () => {
+      window.clearInterval(core)
+      window.clearInterval(tradeTimer)
+    }
+  }, [loadCore, loadTrades])
+
+  useEffect(() => {
+    let active = true
+    api.calendar(month.year, month.month)
+      .then((data) => {
+        if (active) setCalendar(data)
+      })
+      .catch(() => {
+        if (active) setCalendar(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [month])
+
+  const runScan = async () => {
+    setBusy(true)
+    try {
+      const result = await api.runScan(autotrade)
+      setScan(result)
+      await loadCore()
+      await loadTrades()
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const toggleEngine = async () => {
+    setBusy(true)
+    try {
+      const next = status?.state === 'running' ? await api.stopEngine() : await api.startEngine()
+      setStatus(next)
+      await loadCore()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const closePosition = async (tradeId: number, symbol: string) => {
+    if (!window.confirm(`Close the ${symbol} paper position at market?`)) return
+    try {
+      await api.closePosition(tradeId)
+      await loadCore()
+      await loadTrades()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const selectedDayData = useMemo(
+    () => calendar?.days.find((d) => d.day === selectedDay) ?? null,
+    [calendar, selectedDay],
+  )
+
+  const filteredScan = useMemo(() => {
+    const rows = scan?.results ?? []
+    const needle = scanFilter.trim().toUpperCase()
+    return rows.filter((row) => {
+      if (needle && !row.symbol.includes(needle)) return false
+      if (scanStatus !== 'ALL' && row.status !== scanStatus) return false
+      return true
+    })
+  }, [scan, scanFilter, scanStatus])
+
+  const sourceLabel = status?.data_source.active === 'groww' ? 'GROWW LIVE' : 'YAHOO DELAYED'
+  const sourceClass = status?.data_source.active === 'groww' ? 'live' : 'warn'
+
+  return (
+    <div>
+      <header className="header">
+        <div className="brand">
+          <span className="brand-mark">₹</span>
+          GROWW ALGO <small>intraday desk</small>
+        </div>
+        <nav className="nav">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              className={tab === item.id ? 'active' : ''}
+              onClick={() => setTab(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <div className="header-right">
+          <span className={`pill ${sourceClass}`} title={status?.data_source.message ?? ''}>
+            <span className="dot" />{sourceLabel}
+          </span>
+          <span className={`pill ${status?.market_open ? 'live' : 'off'}`}>
+            <span className="dot" />{status?.market_open ? 'MARKET OPEN' : 'MARKET CLOSED'}
+          </span>
+          <span className="equity-chip">₹{money(overview?.equity ?? 0)}</span>
+        </div>
+      </header>
+
+      <main className="container">
+        {error && <div className="error-box">{error}</div>}
+
+        {tab === 'overview' && (
+          <section>
+            <div className="page-head">
+              <div>
+                <h1>Overview</h1>
+                <p>
+                  Paper intraday desk · {status?.config?.universe_size ?? 0} symbols scanned ·{' '}
+                  {status?.mode?.toUpperCase() ?? 'PAPER'} mode
+                </p>
+              </div>
+              <div className="toolbar">
+                <span className="pill">
+                  <span className="dot" />last scan {timeOnly(status?.last_scan_at ?? null)}
+                </span>
+                <button className="btn ghost" onClick={() => void loadCore()}>Refresh</button>
+              </div>
+            </div>
+
+            {overview?.demo && (
+              <div className="banner">
+                <b>DEMO DATA</b> — the calendar below is seeded sample history so you can see the layout.
+                Reset it before the first live paper session.
+              </div>
+            )}
+
+            <div className="kpi-grid">
+              <div className="kpi">
+                <div className="kpi-label">Equity</div>
+                <div className="kpi-value">₹{money(overview?.equity)}</div>
+                <div className="kpi-sub">from ₹{money(overview?.starting_capital, 0)}</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-label">Today P&amp;L</div>
+                <div className={`kpi-value ${(overview?.today_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+                  {moneySigned(overview?.today_pnl)}
+                </div>
+                <div className="kpi-sub">{pct(overview?.today_pnl_pct)}</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-label">Total P&amp;L</div>
+                <div className={`kpi-value ${(overview?.total_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+                  {moneySigned(overview?.total_pnl)}
+                </div>
+                <div className="kpi-sub">{pct(overview?.total_return_pct)} all time</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-label">Win rate</div>
+                <div className="kpi-value">{(overview?.win_rate ?? 0).toFixed(1)}%</div>
+                <div className="kpi-sub">{overview?.closed_trades ?? 0} closed trades</div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-label">Profit factor</div>
+                <div className={`kpi-value ${(overview?.profit_factor ?? 0) >= 1 ? 'pos' : 'neg'}`}>
+                  {(overview?.profit_factor ?? 0).toFixed(2)}
+                </div>
+                <div className="kpi-sub">
+                  avg win ₹{money(overview?.avg_win, 0)} / loss ₹{money(overview?.avg_loss, 0)}
+                </div>
+              </div>
+              <div className="kpi">
+                <div className="kpi-label">Max drawdown</div>
+                <div className="kpi-value neg">{(overview?.max_drawdown_pct ?? 0).toFixed(2)}%</div>
+                <div className="kpi-sub">
+                  {overview?.green_days ?? 0} green / {overview?.red_days ?? 0} red days
+                </div>
+              </div>
+            </div>
+
+            <div className="grid-2">
+              <div className="card">
+                {calendar ? (
+                  <PnlCalendar
+                    key={calTick}
+                    year={calendar.year}
+                    month={calendar.month}
+                    days={calendar.days}
+                    monthPnl={calendar.month_pnl}
+                    sessions={calendar.sessions}
+                    green={calendar.green}
+                    red={calendar.red}
+                    selected={selectedDay}
+                    onSelect={setSelectedDay}
+                    onMonthChange={(year, nextMonth) => {
+                      setSelectedDay(null)
+                      setMonth({ year, month: nextMonth })
+                    }}
+                  />
+                ) : (
+                  <div className="empty-state">Loading calendar…</div>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="card">
+                  <div className="card-head">
+                    <h2>Equity curve</h2>
+                    <span className="sub">{curve.length} sessions</span>
+                  </div>
+                  <div className="card-body">
+                    <EquityCurve curve={curve} />
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-head">
+                    <h2>Bot status</h2>
+                    <button className="btn small" disabled={busy} onClick={() => void toggleEngine()}>
+                      {status?.state === 'running' ? 'Stop bot' : 'Start bot'}
+                    </button>
+                  </div>
+                  <div className="card-body">
+                    <div className="stat-line">
+                      <span className="l">Engine</span>
+                      <span className={status?.state === 'running' ? 'pos' : 'neg'} style={{ fontWeight: 600 }}>
+                        {status?.state?.toUpperCase() ?? '—'}
+                      </span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Data feed</span>
+                      <span className="v">
+                        {status?.data_source.active?.toUpperCase() ?? '—'}
+                        {status?.data_source.groww_ok ? '' : ' (fallback)'}
+                      </span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Entry window</span>
+                      <span className="v">{status?.entry_window ? 'OPEN' : 'CLOSED'}</span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Open positions</span>
+                      <span className="v">
+                        {positions?.positions.length ?? 0} / {status?.config.max_positions ?? 0}
+                      </span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Next scan</span>
+                      <span className="v">{timeOnly(status?.next_scan_at ?? null)}</span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Risk / trade</span>
+                      <span className="v">₹{money(status?.config.risk_per_trade, 0)}</span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Daily loss cap</span>
+                      <span className="v">₹{money(status?.config.max_daily_loss, 0)}</span>
+                    </div>
+                    {status?.last_error && (
+                      <div className="tiny neg" style={{ marginTop: 8 }}>{status.last_error}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {selectedDayData && (
+              <div className="card" style={{ marginTop: 14 }}>
+                <div className="card-head">
+                  <h2>Session detail · {selectedDayData.day}</h2>
+                  <button className="btn small ghost" onClick={() => setSelectedDay(null)}>Clear</button>
+                </div>
+                <div className="card-body">
+                  <div className="detail-grid">
+                    <div className="detail-item">
+                      <div className="l">P&amp;L</div>
+                      <div className={`v ${selectedDayData.pnl >= 0 ? 'pos' : 'neg'}`}>
+                        {moneySigned(selectedDayData.pnl)}
+                      </div>
+                    </div>
+                    <div className="detail-item">
+                      <div className="l">Return</div>
+                      <div className={`v ${selectedDayData.pnl >= 0 ? 'pos' : 'neg'}`}>
+                        {pct(selectedDayData.pnl_pct)}
+                      </div>
+                    </div>
+                    <div className="detail-item">
+                      <div className="l">Closing equity</div>
+                      <div className="v">₹{money(selectedDayData.equity)}</div>
+                    </div>
+                    <div className="detail-item">
+                      <div className="l">Trades</div>
+                      <div className="v">
+                        {selectedDayData.trades} ({selectedDayData.wins}W / {selectedDayData.losses}L)
+                      </div>
+                    </div>
+                    <div className="detail-item">
+                      <div className="l">Realized</div>
+                      <div className={`v ${selectedDayData.realized_pnl >= 0 ? 'pos' : 'neg'}`}>
+                        {moneySigned(selectedDayData.realized_pnl)}
+                      </div>
+                    </div>
+                    <div className="detail-item">
+                      <div className="l">Unrealized</div>
+                      <div className={`v ${selectedDayData.unrealized_pnl >= 0 ? 'pos' : 'neg'}`}>
+                        {moneySigned(selectedDayData.unrealized_pnl)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="card" style={{ marginTop: 14 }}>
+              <div className="card-head">
+                <h2>Recent trades</h2>
+                <button className="btn small ghost" onClick={() => setTab('trades')}>View all</button>
+              </div>
+              <TradesTable trades={trades.slice(0, 6)} filter="" />
+            </div>
+          </section>
+        )}
+
+        {tab === 'scanner' && (
+          <section>
+            <div className="page-head">
+              <div>
+                <h1>Market scanner</h1>
+                <p>
+                  {scan?.scanned ?? 0} symbols scanned · {scan?.qualified ?? 0} qualified ·{' '}
+                  {scan?.watchlist ?? 0} on watchlist · source {scan?.source ?? '—'}
+                </p>
+              </div>
+              <div className="toolbar">
+                <label className="tiny muted" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <input
+                    type="checkbox"
+                    checked={autotrade}
+                    onChange={(e) => setAutotrade(e.target.checked)}
+                  />
+                  auto-trade new signals
+                </label>
+                <button className="btn primary" disabled={busy} onClick={() => void runScan()}>
+                  {busy ? 'Scanning…' : 'Scan now'}
+                </button>
+              </div>
+            </div>
+
+            {autotrade && (
+              <div className="banner">
+                Auto-trade is ON for this manual scan. Orders are still paper-only and obey the
+                position, risk and daily-loss limits in <code>config/strategy.yaml</code>.
+              </div>
+            )}
+
+            <div className="card">
+              <div className="card-head">
+                <div className="toolbar">
+                  <input
+                    className="input"
+                    placeholder="Search symbol"
+                    value={scanFilter}
+                    onChange={(e) => setScanFilter(e.target.value)}
+                  />
+                  <select
+                    className="input select"
+                    value={scanStatus}
+                    onChange={(e) => setScanStatus(e.target.value)}
+                  >
+                    <option value="ALL">All statuses</option>
+                    <option value="QUALIFIED">Qualified</option>
+                    <option value="WATCHLIST">Watchlist</option>
+                    <option value="REJECT">Reject</option>
+                  </select>
+                </div>
+                <div className="meta-row">
+                  <span>last scan <b>{timeOnly(scan?.ts ?? null)}</b></span>
+                  <span>duration <b>{scan?.duration_ms ? `${(scan.duration_ms / 1000).toFixed(1)}s` : '—'}</b></span>
+                  <span>showing <b>{filteredScan.length}</b></span>
+                </div>
+              </div>
+              <ScanTable rows={filteredScan} onSelect={setSelectedRow} />
+            </div>
+
+            {(scan?.trade_errors?.length ?? 0) > 0 && (
+              <div className="card" style={{ marginTop: 14 }}>
+                <div className="card-head"><h2>Bot orders this scan</h2></div>
+                <div className="card-body">
+                  {scan?.trade_errors.map((line, i) => (
+                    <div className="stat-line" key={i}>
+                      <span className="l">{line}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!autotrade && (scan?.signals?.filter((s) => s.action === 'BUY').length ?? 0) > 0 && (
+              <div className="card" style={{ marginTop: 14 }}>
+                <div className="card-head"><h2>Signals the bot would take</h2></div>
+                <div className="card-body">
+                  {scan?.signals.filter((s) => s.action === 'BUY').slice(0, 5).map((signal) => (
+                    <div className="stat-line" key={signal.symbol}>
+                      <span className="l">
+                        {signal.symbol} · qty {signal.qty} · stop ₹{money(signal.stop)} · target ₹{money(signal.target)}
+                      </span>
+                      <span className="v">{signal.score?.toFixed(0)}/100</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {tab === 'positions' && (
+          <section>
+            <div className="page-head">
+              <div>
+                <h1>Positions</h1>
+                <p>
+                  Cash ₹{money(positions?.cash)} · equity ₹{money(positions?.equity)} ·{' '}
+                  {positions?.positions.length ?? 0} open
+                </p>
+              </div>
+              <button className="btn ghost" onClick={() => void loadCore()}>Refresh</button>
+            </div>
+
+            {!positions?.positions.length && (
+              <div className="card"><div className="empty-state">No open paper positions. The bot opens them automatically during the entry window.</div></div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+              {positions?.positions.map((p) => (
+                <div className="card" key={p.trade_id}>
+                  <div className="card-head">
+                    <div>
+                      <h2>{p.symbol}</h2>
+                      <span className="sub">
+                        {p.qty} @ ₹{money(p.avg_price)} · opened {timeOnly(p.opened_at)}
+                      </span>
+                    </div>
+                    <span className={`status-pill ${p.unrealized >= 0 ? 'buy' : 'sell'}`}>
+                      {p.unrealized >= 0 ? 'IN PROFIT' : 'IN LOSS'}
+                    </span>
+                  </div>
+                  <div className="card-body">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span className="muted tiny">Unrealized P&amp;L</span>
+                      <span className={`kpi-value ${p.unrealized >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 22 }}>
+                        {moneySigned(p.unrealized)}
+                      </span>
+                    </div>
+                    <div className="stat-line"><span className="l">Last price</span><span className="v">₹{money(p.last_price)}</span></div>
+                    <div className="stat-line"><span className="l">Return</span><span className={`v ${p.unrealized_pct >= 0 ? 'pos' : 'neg'}`}>{pct(p.unrealized_pct)}</span></div>
+                    <div className="stat-line"><span className="l">R multiple</span><span className="v">{p.r_multiple?.toFixed(2) ?? '—'}</span></div>
+                    <div className="stat-line"><span className="l">Stop</span><span className="v neg">₹{money(p.stop)}</span></div>
+                    <div className="stat-line"><span className="l">Target</span><span className="v pos">₹{money(p.target)}</span></div>
+                    <div className="stat-line"><span className="l">Value</span><span className="v">₹{money(p.value)}</span></div>
+                    <button
+                      className="btn danger"
+                      style={{ width: '100%', marginTop: 10 }}
+                      onClick={() => void closePosition(p.trade_id, p.symbol)}
+                    >
+                      Close position
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {tab === 'trades' && (
+          <section>
+            <div className="page-head">
+              <div>
+                <h1>Trades</h1>
+                <p>Every simulated fill, newest first. Charges include brokerage, STT and slippage.</p>
+              </div>
+              <input
+                className="input"
+                placeholder="Filter symbol or exit reason"
+                value={tradeFilter}
+                onChange={(e) => setTradeFilter(e.target.value)}
+              />
+            </div>
+            <div className="card">
+              <TradesTable trades={trades} filter={tradeFilter} />
+            </div>
+          </section>
+        )}
+
+        {tab === 'portfolio' && <GrowwPortfolio />}
+
+        {tab === 'settings' && (
+          <SettingsPanel
+            status={status}
+            onChanged={() => {
+              setCalTick((prev) => prev + 1)
+              void loadCore()
+              void loadTrades()
+            }}
+          />
+        )}
+      </main>
+
+      <SymbolDrawer row={selectedRow} onClose={() => setSelectedRow(null)} />
+    </div>
+  )
+}

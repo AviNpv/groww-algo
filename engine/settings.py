@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import threading
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import yaml
-from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = BASE_DIR / "config"
@@ -18,7 +18,6 @@ CONFIG_PATH = CONFIG_DIR / "strategy.yaml"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-load_dotenv(BASE_DIR / ".env")
 
 IST = ZoneInfo("Asia/Kolkata")
 

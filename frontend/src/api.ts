@@ -28,10 +28,13 @@ import type {
   Trade,
 } from './types'
 
-// Request function that prepends API_BASE
+// API prefix for all backend routes
+const BACKEND_API_PREFIX = '/api'
+
+// Request function that prepends API_BASE and BACKEND_API_PREFIX
 // Each route should NOT include /api prefix (the frontend adds it consistently)
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = `${API_BASE}${path}`
+  const url = `${API_BASE}${BACKEND_API_PREFIX}${path}`
   const response = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     ...init,

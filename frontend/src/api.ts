@@ -9,7 +9,7 @@
 // use VITE_API_BASE_URL (standard Vite prefix) - values with VITE_ prefix
 // are injected into the browser bundle but are not surfaced automatically
 // in the UI. Set this in your dashboard: Netlify → Site Settings → Env Vars
-const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.API_BASE_URL || 'http://127.0.0.1:8000'
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.API_BASE_URL || 'https://groww-algo.onrender.com'
 
 import type {
   CalendarResponse,

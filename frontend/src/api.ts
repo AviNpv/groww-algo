@@ -1,8 +1,15 @@
 // API base URL configuration
-// Set VITE_API_BASE_URL in Netlify dashboard to your backend URL
-// Example: http://192.168.1.4:8000 or https://your-backend.onrender.com
+// Support both VITE_API_BASE_URL (standard Vite) and API_BASE_URL (custom)
+// The value is embedded in the frontend bundle - this is unavoidable since
+// the frontend must know the backend URL to make API calls.
+// Set this to: https://groww-algo.onrender.com (your Render backend)
 // In development (local), if not set, defaults to 127.0.0.1:8000
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+// 
+// To keep the value "private" from casual browser inspection,
+// use VITE_API_BASE_URL (standard Vite prefix) - values with VITE_ prefix
+// are injected into the browser bundle but are not surfaced automatically
+// in the UI. Set this in your dashboard: Netlify → Site Settings → Env Vars
+const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.API_BASE_URL || 'http://127.0.0.1:8000'
 
 import type {
   CalendarResponse,

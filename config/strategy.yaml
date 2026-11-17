@@ -74,7 +74,7 @@ account:
 
   max_position_pct: 45
 
-  max_trades_per_day: 4
+  max_trades_per_day: 10
   max_trades_per_symbol_per_day: 1
 
   daily_loss_includes_costs: true
@@ -509,7 +509,7 @@ account:
 
   max_position_pct: 45
 
-  max_trades_per_day: 4
+  max_trades_per_day: 10
   max_trades_per_symbol_per_day: 1
 
   daily_loss_includes_costs: true
@@ -944,7 +944,7 @@ account:
 
   max_position_pct: 45
 
-  max_trades_per_day: 4
+  max_trades_per_day: 10
   max_trades_per_symbol_per_day: 1
 
   daily_loss_includes_costs: true
@@ -1379,7 +1379,7 @@ account:
 
   max_position_pct: 45
 
-  max_trades_per_day: 4
+  max_trades_per_day: 10
   max_trades_per_symbol_per_day: 1
 
   daily_loss_includes_costs: true
@@ -1814,7 +1814,7 @@ account:
 
   max_position_pct: 45
 
-  max_trades_per_day: 4
+  max_trades_per_day: 10
   max_trades_per_symbol_per_day: 1
 
   daily_loss_includes_costs: true

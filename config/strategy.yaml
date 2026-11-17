@@ -174,7 +174,7 @@ market_filter:
 entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -209,7 +209,7 @@ entry:
 short_entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -609,7 +609,7 @@ market_filter:
 entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -644,7 +644,7 @@ entry:
 short_entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -1044,7 +1044,7 @@ market_filter:
 entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -1079,7 +1079,7 @@ entry:
 short_entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -1479,7 +1479,7 @@ market_filter:
 entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -1514,7 +1514,7 @@ entry:
 short_entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -1914,7 +1914,7 @@ market_filter:
 entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 
@@ -1949,7 +1949,7 @@ entry:
 short_entry:
   enabled: true
 
-  min_score: 90
+  min_score: 65
 
   min_confirmations: 4
 

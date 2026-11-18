@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import type { CalendarDay } from '../types'
-import { moneySigned, pct } from '../api'
+import { exactPct, exactSigned } from '../api'
 
 interface Props {
   year: number
@@ -61,7 +61,7 @@ export default function PnlCalendar({
           <div className="sub">
             {sessions} sessions · {green} green · {red} red ·{' '}
             <span className={monthPnl >= 0 ? 'pos' : 'neg'}>
-              {moneySigned(monthPnl)}
+              {exactSigned(monthPnl)}
             </span>{' '}
             this month
           </div>
@@ -108,14 +108,14 @@ export default function PnlCalendar({
                 key={key}
                 style={{ background }}
                 onClick={() => onSelect(selected === date ? null : date)}
-                title={`${date} · P&L ${moneySigned(data.pnl)} · ${data.trades} trades`}
+                title={`${date} · P&L ${exactSigned(data.pnl)} · ${data.trades} trades`}
               >
                 <span className="cal-day">{dayNum}</span>
                 <span className="cal-trades">{data.trades} trade{data.trades === 1 ? '' : 's'}</span>
                 <span className={`cal-pnl ${win ? 'pos' : loss ? 'neg' : 'muted'}`}>
-                  {moneySigned(data.pnl, 0)}
+                  {exactSigned(data.pnl)}
                 </span>
-                <span className="cal-pct">{pct(data.pnl_pct)}</span>
+                <span className="cal-pct">{exactPct(data.pnl_pct)}</span>
               </div>
             )
           })}

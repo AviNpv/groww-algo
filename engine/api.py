@@ -7,6 +7,7 @@ import re
 import secrets
 import threading
 import time
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
@@ -122,7 +123,7 @@ def calendar(year: int = Query(default=None), month: int = Query(default=None)) 
         "year": year,
         "month": month,
         "days": days,
-        "month_pnl": round(sum(d.get("pnl", 0) for d in days), 2),
+        "month_pnl": float(sum((Decimal(str(d.get("pnl", 0) or 0)) for d in days), Decimal(0))),
         "sessions": len(days),
         "green": sum(1 for d in days if d.get("pnl", 0) > 0),
         "red": sum(1 for d in days if d.get("pnl", 0) < 0),

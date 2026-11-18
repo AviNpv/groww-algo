@@ -10,10 +10,25 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
+from decimal import Decimal, ROUND_HALF_UP
 
 from engine.settings import DB_PATH, cfg, now_ist
 
 _lock = threading.RLock()
+
+# Money is calculated in decimal so the UI can display the exact value instead
+# of a binary-float artefact (e.g. 3.130000000000109). 8 places is far beyond
+# any rupee/paise amount and keeps genuine precision intact.
+_Q = Decimal("0.00000001")
+
+
+def _dec(value) -> Decimal:
+    return Decimal(str(value if value is not None else 0))
+
+
+def _clean(value) -> float:
+    """Exact decimal value as a float, with float noise removed."""
+    return float(_dec(value).quantize(_Q, rounding=ROUND_HALF_UP))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS account (
@@ -373,9 +388,11 @@ def calendar_month(year: int, month: int) -> list[dict]:
     for day in sorted(days):
         row = days[day]
         if previous is not None:
-            row["pnl"] = round(float(row["equity"]) - float(previous["equity"]), 2)
-            row["pnl_pct"] = round((float(row["equity"]) / float(previous["equity"]) - 1) * 100, 2) \
-                if previous["equity"] else 0.0
+            equity = _dec(row["equity"])
+            base = _dec(previous["equity"])
+            diff = equity - base
+            row["pnl"] = _clean(diff)
+            row["pnl_pct"] = _clean(diff / base * 100) if base else 0.0
         else:
             # First session in the month: compare against the prior session's
             # closing equity so month boundaries do not hide a day's P&L.
@@ -385,9 +402,10 @@ def calendar_month(year: int, month: int) -> list[dict]:
                     (day,),
                 ).fetchone()
                 acc = conn.execute("SELECT starting_capital FROM account WHERE id = 1").fetchone()
-            base = float(prior["equity"]) if prior else float((acc or {})["starting_capital"] or row["equity"] or 1)
-            row["pnl"] = round(float(row["equity"]) - base, 2)
-            row["pnl_pct"] = round(row["pnl"] / base * 100, 2) if base else 0.0
+            base = _dec(prior["equity"]) if prior else _dec((acc or {})["starting_capital"] or row["equity"] or 1)
+            diff = _dec(row["equity"]) - base
+            row["pnl"] = _clean(diff)
+            row["pnl_pct"] = _clean(diff / base * 100) if base else 0.0
         previous = row
         out.append(row)
     return out
@@ -482,33 +500,35 @@ def overview() -> dict:
                    for i in range(1, len(day_rows))]
     day_start = float(acc["day_start_equity"] or start)
 
+    today_diff = _dec(equity) - _dec(day_start)
+    total_diff = _dec(equity) - _dec(start)
     return {
-        "equity": round(equity, 2),
-        "cash": round(cash, 2),
-        "market_value": round(mv, 2),
-        "starting_capital": round(start, 2),
-        "total_pnl": round(equity - start, 2),
-        "total_return_pct": round((equity / start - 1) * 100, 2),
-        "today_pnl": round(equity - day_start, 2),
-        "today_pnl_pct": round((equity / day_start - 1) * 100, 2) if day_start else 0.0,
-        "realized_pnl": round(realized, 2),
-        "unrealized_pnl": round(unrealized, 2),
+        "equity": _clean(equity),
+        "cash": _clean(cash),
+        "market_value": _clean(mv),
+        "starting_capital": _clean(start),
+        "total_pnl": _clean(total_diff),
+        "total_return_pct": _clean(total_diff / _dec(start) * 100) if start else 0.0,
+        "today_pnl": _clean(today_diff),
+        "today_pnl_pct": _clean(today_diff / _dec(day_start) * 100) if day_start else 0.0,
+        "realized_pnl": _clean(realized),
+        "unrealized_pnl": _clean(unrealized),
         "open_positions": int(open_count),
         "closed_trades": len(pnls),
-        "win_rate": round(len(wins) / len(pnls) * 100, 1) if pnls else 0.0,
-        "profit_factor": round(gross_profit / gross_loss, 2) if gross_loss else (gross_profit and 99.0 or 0.0),
-        "avg_win": round(sum(wins) / len(wins), 2) if wins else 0.0,
-        "avg_loss": round(sum(losses) / len(losses), 2) if losses else 0.0,
-        "best_trade": round(max(pnls), 2) if pnls else 0.0,
-        "worst_trade": round(min(pnls), 2) if pnls else 0.0,
-        "max_drawdown_pct": round(max_dd, 2),
-        "best_day": round(max(day_changes), 2) if day_changes else 0.0,
-        "worst_day": round(min(day_changes), 2) if day_changes else 0.0,
+        "win_rate": _clean(len(wins) / len(pnls) * 100) if pnls else 0.0,
+        "profit_factor": _clean(gross_profit / gross_loss) if gross_loss else (gross_profit and 99.0 or 0.0),
+        "avg_win": _clean(sum(wins) / len(wins)) if wins else 0.0,
+        "avg_loss": _clean(sum(losses) / len(losses)) if losses else 0.0,
+        "best_trade": _clean(max(pnls)) if pnls else 0.0,
+        "worst_trade": _clean(min(pnls)) if pnls else 0.0,
+        "max_drawdown_pct": _clean(max_dd),
+        "best_day": _clean(max(day_changes)) if day_changes else 0.0,
+        "worst_day": _clean(min(day_changes)) if day_changes else 0.0,
         "green_days": sum(1 for x in day_changes if x > 0),
         "red_days": sum(1 for x in day_changes if x < 0),
         "sessions": len(day_rows),
         "day_date": acc["day_date"],
-        "day_start_equity": round(day_start, 2),
+        "day_start_equity": _clean(day_start),
         "demo": bool(acc["demo"]),
         "mode": "paper",
     }

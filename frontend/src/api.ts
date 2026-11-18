@@ -136,6 +136,26 @@ export function moneySigned(value: number | null | undefined, digits = 2): strin
   return `${value >= 0 ? '+' : '-'}₹${money(Math.abs(value), digits)}`
 }
 
+/** Exact number with no display rounding; the backend already removed float noise. */
+export function exact(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  return value.toLocaleString('en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  })
+}
+
+/** Exact rupee P&L, e.g. -₹3.13 instead of a rounded -₹3. */
+export function exactSigned(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  return `${value >= 0 ? '+' : '-'}₹${exact(Math.abs(value))}`
+}
+
+export function exactPct(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return '—'
+  return `${value >= 0 ? '+' : ''}${exact(value)}%`
+}
+
 export function pct(value: number | null | undefined, digits = 2): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '—'
   return `${value >= 0 ? '+' : ''}${value.toFixed(digits)}%`

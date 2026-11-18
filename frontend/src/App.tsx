@@ -10,7 +10,7 @@ import type {
   Status,
   Trade,
 } from './types'
-import { api, money, moneySigned, pct, timeOnly } from './api'
+import { api, exactPct, exactSigned, money, timeOnly } from './api'
 import PnlCalendar from './components/PnlCalendar'
 import EquityCurve from './components/EquityCurve'
 import ScanTable from './components/ScanTable'
@@ -260,16 +260,16 @@ export default function App() {
               <div className="kpi">
                 <div className="kpi-label">Today P&amp;L</div>
                 <div className={`kpi-value ${(overview?.today_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-                  {moneySigned(overview?.today_pnl)}
+                  {exactSigned(overview?.today_pnl)}
                 </div>
-                <div className="kpi-sub">{pct(overview?.today_pnl_pct)}</div>
+                <div className="kpi-sub">{exactPct(overview?.today_pnl_pct)}</div>
               </div>
               <div className="kpi">
                 <div className="kpi-label">Total P&amp;L</div>
                 <div className={`kpi-value ${(overview?.total_pnl ?? 0) >= 0 ? 'pos' : 'neg'}`}>
-                  {moneySigned(overview?.total_pnl)}
+                  {exactSigned(overview?.total_pnl)}
                 </div>
-                <div className="kpi-sub">{pct(overview?.total_return_pct)} all time</div>
+                <div className="kpi-sub">{exactPct(overview?.total_return_pct)} all time</div>
               </div>
               <div className="kpi">
                 <div className="kpi-label">Win rate</div>
@@ -391,13 +391,13 @@ export default function App() {
                     <div className="detail-item">
                       <div className="l">P&amp;L</div>
                       <div className={`v ${selectedDayData.pnl >= 0 ? 'pos' : 'neg'}`}>
-                        {moneySigned(selectedDayData.pnl)}
+                        {exactSigned(selectedDayData.pnl)}
                       </div>
                     </div>
                     <div className="detail-item">
                       <div className="l">Return</div>
                       <div className={`v ${selectedDayData.pnl >= 0 ? 'pos' : 'neg'}`}>
-                        {pct(selectedDayData.pnl_pct)}
+                        {exactPct(selectedDayData.pnl_pct)}
                       </div>
                     </div>
                     <div className="detail-item">
@@ -413,13 +413,13 @@ export default function App() {
                     <div className="detail-item">
                       <div className="l">Realized</div>
                       <div className={`v ${selectedDayData.realized_pnl >= 0 ? 'pos' : 'neg'}`}>
-                        {moneySigned(selectedDayData.realized_pnl)}
+                        {exactSigned(selectedDayData.realized_pnl)}
                       </div>
                     </div>
                     <div className="detail-item">
                       <div className="l">Unrealized</div>
                       <div className={`v ${selectedDayData.unrealized_pnl >= 0 ? 'pos' : 'neg'}`}>
-                        {moneySigned(selectedDayData.unrealized_pnl)}
+                        {exactSigned(selectedDayData.unrealized_pnl)}
                       </div>
                     </div>
                   </div>
@@ -564,11 +564,11 @@ export default function App() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                       <span className="muted tiny">Unrealized P&amp;L</span>
                       <span className={`kpi-value ${p.unrealized >= 0 ? 'pos' : 'neg'}`} style={{ fontSize: 22 }}>
-                        {moneySigned(p.unrealized)}
+                        {exactSigned(p.unrealized)}
                       </span>
                     </div>
                     <div className="stat-line"><span className="l">Last price</span><span className="v">₹{money(p.last_price)}</span></div>
-                    <div className="stat-line"><span className="l">Return</span><span className={`v ${p.unrealized_pct >= 0 ? 'pos' : 'neg'}`}>{pct(p.unrealized_pct)}</span></div>
+                    <div className="stat-line"><span className="l">Return</span><span className={`v ${p.unrealized_pct >= 0 ? 'pos' : 'neg'}`}>{exactPct(p.unrealized_pct)}</span></div>
                     <div className="stat-line"><span className="l">R multiple</span><span className="v">{p.r_multiple?.toFixed(2) ?? '—'}</span></div>
                     <div className="stat-line"><span className="l">Stop</span><span className="v neg">₹{money(p.stop)}</span></div>
                     <div className="stat-line"><span className="l">Target</span><span className="v pos">₹{money(p.target)}</span></div>

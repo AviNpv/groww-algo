@@ -3,7 +3,9 @@ services:
     name: groww-algo-backend
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    # Build the React UI too, so the backend can serve it at "/".
+    # If Node is unavailable in the build image, the committed frontend/dist is used.
+    buildCommand: pip install -r requirements.txt && (cd frontend && npm ci && npm run build || echo "Using committed frontend/dist")
     startCommand: python -m uvicorn engine.api:app --host 0.0.0.0 --port $PORT
     envVars:
       PORT: [10000]

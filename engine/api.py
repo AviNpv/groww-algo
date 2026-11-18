@@ -210,6 +210,35 @@ def trades(limit: int = 200, symbol: str | None = None) -> dict:
     return {"trades": ledger.trades(limit=limit, symbol=symbol)}
 
 
+# --------------------------------------------------------------------------
+# single-request real-time snapshot (dashboard polls this every second)
+# --------------------------------------------------------------------------
+@app.get("/api/live")
+def live(year: int | None = None, month: int | None = None) -> dict:
+    """Return one consistent snapshot for the dashboard.
+
+    Open positions are re-marked with the latest available prices first, then
+    today's equity is snapshotted. That makes the Overview P&L and the calendar
+    cell for today show exactly the same number on every tick.
+    """
+    now = now_ist()
+    year = year or now.year
+    month = month or now.month
+    pos = positions()  # refreshes marks from the live feed
+    ledger.snapshot_equity()
+    return {
+        "ts": now_ist().isoformat(timespec="seconds"),
+        "range": {"year": year, "month": month},
+        "status": status(),
+        "overview": ledger.overview(),
+        "calendar": calendar(year, month),
+        "curve": ledger.equity_curve(400),
+        "positions": pos,
+        "trades": ledger.trades(limit=300),
+        "scan": latest_scan(),
+    }
+
+
 @app.post("/api/positions/{trade_id}/close")
 def close_position(trade_id: int) -> dict:
     rows = {p["trade_id"]: p for p in ledger.positions()}

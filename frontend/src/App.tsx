@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CalendarResponse,
   EquityPoint,
+  LiveResponse,
   Overview,
   PositionsResponse,
   ScanResponse,
@@ -19,6 +20,9 @@ import SettingsPanel from './components/SettingsPanel'
 import GrowwPortfolio from './components/GrowwPortfolio'
 
 type Tab = 'overview' | 'scanner' | 'positions' | 'trades' | 'portfolio' | 'settings'
+
+/** Dashboard polling interval - the whole screen refreshes once per second. */
+const LIVE_REFRESH_MS = 1000
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'overview', label: 'Overview' },
@@ -40,6 +44,7 @@ export default function App() {
   const [trades, setTrades] = useState<Trade[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [lastTick, setLastTick] = useState<string | null>(null)
   const [calTick, setCalTick] = useState(0)
   const [autotrade, setAutotrade] = useState(false)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
@@ -82,30 +87,52 @@ export default function App() {
     }
   }, [])
 
-  useEffect(() => {
-    void loadCore()
-    void loadTrades()
-    const core = window.setInterval(() => void loadCore(), 15000)
-    const tradeTimer = window.setInterval(() => void loadTrades(), 30000)
-    return () => {
-      window.clearInterval(core)
-      window.clearInterval(tradeTimer)
+  /**
+   * One endpoint returns status, overview, calendar, equity curve, positions,
+   * trades and the latest scan together, after re-marking open positions.
+   * Every number on screen - including the calendar cell for today - is
+   * therefore from the same instant and stays in sync on every tick.
+   */
+  const applySnapshot = useCallback((data: LiveResponse) => {
+    setStatus(data.status)
+    setOverview(data.overview)
+    setScan(data.scan)
+    setPositions(data.positions)
+    setCurve(data.curve)
+    setTrades(data.trades)
+    setCalendar(data.calendar)
+    setLastTick(data.ts)
+    // Clear only connectivity errors; action errors stay visible until dismissed.
+    setError((prev) => (prev?.startsWith('Backend not reachable') ? null : prev))
+  }, [])
+
+  const ticking = useRef(false)
+  const tick = useCallback(async () => {
+    if (ticking.current) return
+    ticking.current = true
+    try {
+      applySnapshot(await api.live(month.year, month.month))
+    } catch {
+      setError('Backend not reachable. Start it with: .venv\\Scripts\\python.exe -m uvicorn engine.api:app --port 8000')
+    } finally {
+      ticking.current = false
     }
-  }, [loadCore, loadTrades])
+  }, [applySnapshot, month.year, month.month])
 
   useEffect(() => {
-    let active = true
-    api.calendar(month.year, month.month)
-      .then((data) => {
-        if (active) setCalendar(data)
-      })
-      .catch(() => {
-        if (active) setCalendar(null)
-      })
-    return () => {
-      active = false
+    void tick()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void tick()
+    }, LIVE_REFRESH_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void tick()
     }
-  }, [month])
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [tick])
 
   const runScan = async () => {
     setBusy(true)
@@ -188,6 +215,9 @@ export default function App() {
           </span>
           <span className={`pill ${status?.market_open ? 'live' : 'off'}`}>
             <span className="dot" />{status?.market_open ? 'MARKET OPEN' : 'MARKET CLOSED'}
+          </span>
+          <span className="pill live" title={`Auto-refresh every second · last update ${lastTick ?? '—'}`}>
+            <span className="dot" />LIVE {lastTick ? new Date(lastTick).toLocaleTimeString('en-IN', { hour12: false }) : '—'}
           </span>
           <span className="equity-chip">₹{money(overview?.equity ?? 0)}</span>
         </div>

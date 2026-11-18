@@ -18,6 +18,7 @@ import type {
   ConfigSaveResponse,
   CredentialsResponse,
   EquityPoint,
+  LiveResponse,
   PortfolioResponse,
   Overview,
   PositionsResponse,
@@ -36,8 +37,10 @@ const BACKEND_API_PREFIX = '/api'
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE}${BACKEND_API_PREFIX}${path}`
   const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    // Never let the browser serve a cached snapshot on a live tick.
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
   if (!response.ok) {
     const text = await response.text()
@@ -55,6 +58,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  /** Single request used by the 1-second dashboard refresh. */
+  live: (year: number, month: number) =>
+    request<LiveResponse>(`/live?year=${year}&month=${month}`),
   status: () => request<Status>('/status'),
   overview: () => request<Overview>('/overview'),
   calendar: (year: number, month: number) =>

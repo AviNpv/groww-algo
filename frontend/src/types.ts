@@ -210,6 +210,19 @@ export interface Status {
   }
 }
 
+/** One consistent snapshot returned by /api/live on every dashboard tick. */
+export interface LiveResponse {
+  ts: string
+  range: { year: number; month: number }
+  status: Status
+  overview: Overview
+  calendar: CalendarResponse
+  curve: EquityPoint[]
+  positions: PositionsResponse
+  trades: Trade[]
+  scan: ScanResponse
+}
+
 export interface ConfigResponse {
   config: Record<string, unknown>
   yaml: string

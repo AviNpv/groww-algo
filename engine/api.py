@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from engine import backtest, broker, groww_auth, groww_data, ledger, marketdata, scanner, universe
+from engine import backtest, broker, groww_auth, groww_data, ledger, marketdata, scanner, strategy, universe
 from engine.engine import ENGINE
 from engine.settings import BASE_DIR, CACHE_DIR, CONFIG_DIR, CONFIG_PATH, cfg, load_config, now_ist
 
@@ -64,6 +64,13 @@ class BacktestRequest(BaseModel):
     preset: str | None = None
     overrides: dict | None = None
     limit: int = 60
+
+
+class ChartRequest(BaseModel):
+    symbol: str
+    interval: str = "5m"
+    days: int = 5
+    row: dict | None = None
 
 
 @app.on_event("startup")
@@ -237,6 +244,208 @@ def live(year: int | None = None, month: int | None = None) -> dict:
         "positions": pos,
         "trades": ledger.trades(limit=300),
         "scan": latest_scan(),
+    }
+
+
+# --------------------------------------------------------------------------
+# strategy chart: candles + the active strategy rules drawn on them
+# --------------------------------------------------------------------------
+_CHART_INTERVALS = {"1m", "2m", "3m", "5m", "10m", "15m", "30m", "60m", "1h", "4h", "1d", "1wk"}
+
+
+def _ema_series(values: list[float], period: int) -> list[float]:
+    if not values:
+        return []
+    alpha = 2.0 / (period + 1)
+    out = [values[0]]
+    for value in values[1:]:
+        out.append(value * alpha + out[-1] * (1 - alpha))
+    return out
+
+
+def _vwap_series(candles: list[dict]) -> list[float]:
+    """Session cumulative VWAP; the day resets on the first bar of each date."""
+    out: list[float] = []
+    day = None
+    pv = volume = 0.0
+    for bar in candles:
+        bar_day = str(bar["t"])[:10]
+        if bar_day != day:
+            day, pv, volume = bar_day, 0.0, 0.0
+        weight = float(bar.get("v") or 0) or 1.0
+        pv += ((float(bar["h"]) + float(bar["l"]) + float(bar["c"])) / 3) * weight
+        volume += weight
+        out.append(pv / volume if volume else float(bar["c"]))
+    return out
+
+
+def _atr_from_candles(candles: list[dict], period: int = 14) -> float:
+    if len(candles) < 2:
+        return 0.0
+    trs = []
+    for i in range(1, len(candles)):
+        high, low, prev = (float(candles[i]["h"]), float(candles[i]["l"]),
+                           float(candles[i - 1]["c"]))
+        trs.append(max(high - low, abs(high - prev), abs(low - prev)))
+    window = trs[-period:]
+    return sum(window) / len(window) if window else 0.0
+
+
+def _fetch_chart_candles(symbol: str, interval: str, days: int) -> tuple[list[dict], str, bool, str | None]:
+    """Groww first; Yahoo keeps the chart usable while approval is pending."""
+    error = None
+    rows: list[dict] = []
+    if marketdata.groww_usable():
+        try:
+            rows = list(groww_data.candles(symbol, interval, days).get("candles") or [])
+        except Exception as exc:  # noqa: BLE001 - feed errors must not break the chart
+            error = str(exc)[:200]
+    if rows:
+        return rows, "groww", False, None
+
+    try:
+        from engine import yahoo
+
+        if interval == "1d":
+            frame = (yahoo.daily([symbol], "1y") or {}).get(symbol)
+        else:
+            frame = (yahoo.intraday([symbol], interval, f"{days}d") or {}).get(symbol)
+        if frame is not None and len(frame):
+            rows = [
+                {"t": str(ts), "o": float(r["o"]), "h": float(r["h"]),
+                 "l": float(r["l"]), "c": float(r["c"]), "v": int(r["v"] or 0)}
+                for ts, r in frame.iterrows()
+            ][-400:]
+            return rows, "yahoo", True, None
+    except Exception as exc:  # noqa: BLE001
+        error = error or str(exc)[:200]
+    return [], "none", False, error
+
+
+@app.post("/api/chart")
+def strategy_chart(req: ChartRequest) -> dict:
+    """Candles with entry/stop/target and a plain-language strategy checklist."""
+    symbol = re.sub(r"[^A-Za-z0-9.&_-]", "", req.symbol).upper()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="symbol is required")
+    interval = req.interval if req.interval in _CHART_INTERVALS else "5m"
+    days = max(1, min(int(req.days or 5), 60))
+    row = req.row or {}
+
+    candles, source, delayed, error = _fetch_chart_candles(symbol, interval, days)
+    closes = [float(c["c"]) for c in candles]
+    price = float(row.get("price") or (closes[-1] if closes else 0) or 0)
+    ind = row.get("indicators") or {}
+    vwap = float(ind.get("vwap") or 0)
+    ema20 = float(ind.get("ema20") or 0)
+    ema50 = float(ind.get("ema50") or 0)
+    rel_vol = float(ind.get("rel_vol") or 0)
+    atr_pct = float(ind.get("atr_pct") or 0)
+    atr = float(row.get("atr") or 0) or (price * atr_pct / 100 if atr_pct else 0)
+    if not atr and candles:
+        atr = _atr_from_candles(candles)
+
+    stop_dist = strategy.stop_distance(price, atr) if price else 0.0
+    stop = price - stop_dist
+    target_r = float(cfg("exit", "target_r_mult", default=2.0))
+    target = price + stop_dist * target_r
+    resistance = row.get("resistance")
+    if resistance and float(resistance) > price * 1.003 and float(resistance) < target:
+        target = float(resistance)
+    support = row.get("support")
+    risk_reward = (target - price) / stop_dist if stop_dist else 0.0
+
+    def rule(label: str, required: str, actual: str, ok: bool | None) -> dict:
+        return {"label": label, "required": required, "actual": actual, "ok": ok}
+
+    score = float(row.get("score") or 0)
+    confirmations = int(row.get("confirmations") or 0)
+    min_score = float(cfg("entry", "min_score", default=65))
+    min_conf = int(cfg("entry", "min_confirmations", default=3))
+    require_trend = bool(cfg("entry", "require_trend", default=True))
+    require_vwap = bool(cfg("entry", "require_above_vwap", default=True))
+    min_rv = float(cfg("entry", "min_relative_volume", default=1.4))
+    min_atr = float(cfg("entry", "min_atr_pct", default=0.4))
+    max_atr = float(cfg("entry", "max_atr_pct", default=3.5))
+    max_ext = float(cfg("entry", "max_vwap_extension_pct", default=2.5))
+    min_rr = float(cfg("entry", "min_risk_reward", default=1.8))
+
+    rules: list[dict] = []
+    if row:
+        rules.append(rule("Composite score", f">= {min_score:g}", f"{score:g}", score >= min_score))
+        rules.append(rule("Factor confirmations", f">= {min_conf}", str(confirmations), confirmations >= min_conf))
+        status = str(row.get("status") or "").upper()
+        rules.append(rule("Scanner status", "QUALIFIED", status or "—", status == "QUALIFIED" or None))
+        if require_trend:
+            rules.append(rule("Trend (EMA20 > EMA50, price > EMA20)", "required",
+                              f"{ema20:.2f} / {ema50:.2f}" if ema20 else "—",
+                              bool(ema20 and ema50 and ema20 > ema50 and price > ema20)))
+        else:
+            rules.append(rule("Trend filter", "disabled in strategy.yaml", "not required", None))
+        if require_vwap:
+            extension = (price / vwap - 1) * 100 if vwap else 0
+            rules.append(rule("Price above VWAP", f"extension <= {max_ext:g}%",
+                              f"{extension:.2f}%" if vwap else "—",
+                              bool(vwap and price >= vwap and extension <= max_ext)))
+        else:
+            rules.append(rule("VWAP filter", "disabled in strategy.yaml", "not required", None))
+        rules.append(rule("Relative volume", f">= {min_rv:g}x", f"{rel_vol:.2f}x" if rel_vol else "—",
+                          rel_vol >= min_rv if rel_vol else None))
+        rules.append(rule("ATR volatility", f"{min_atr:g}% - {max_atr:g}%", f"{atr_pct:.2f}%" if atr_pct else "—",
+                          min_atr <= atr_pct <= max_atr if atr_pct else None))
+        rules.append(rule("Risk : reward", f">= {min_rr:g}R", f"{risk_reward:.2f}R", risk_reward >= min_rr))
+    else:
+        rules.append(rule("Select a scanner row", "—", "no candidate selected", None))
+
+    rules.append(rule("Stop loss", f"ATR x {float(cfg('exit', 'stop_atr_mult', default=1.2)):g}, clamped 0.4%-2%",
+                      f"₹{stop:.2f} ({stop_dist:.2f} below entry)", True))
+    rules.append(rule("Target", f"{target_r:g}R" + (" (capped at resistance)" if resistance and float(resistance) < price + stop_dist * target_r else ""),
+                      f"₹{target:.2f}", True))
+    rules.append(rule("Time stop / square-off",
+                      f"{int(cfg('exit', 'time_stop_minutes', default=180))} min, {cfg('exit', 'square_off', default='15:20')} IST",
+                      "intraday only", True))
+    rules.append(rule("Entry confirmation", "Groww fresh data", marketdata.health().get("state", "unknown"),
+                      bool(marketdata.groww_usable())))
+
+    markers = []
+    lookback = int(cfg("entry", "breakout_lookback", default=20))
+    breakout_i = None
+    for i in range(lookback, len(candles)):
+        if float(candles[i]["c"]) > max(float(c["h"]) for c in candles[i - lookback:i]):
+            breakout_i = i
+            break
+    for pattern in (row.get("patterns") or []):
+        name = pattern.get("name") if isinstance(pattern, dict) else str(pattern)
+        direction = pattern.get("direction", "neutral") if isinstance(pattern, dict) else "neutral"
+        note = pattern.get("note", "") if isinstance(pattern, dict) else ""
+        idx = breakout_i if breakout_i is not None and str(name).lower() == "breakout" else (len(candles) - 1)
+        markers.append({"i": max(0, idx or 0), "label": str(name), "direction": str(direction), "note": str(note)})
+
+    last = candles[-1] if candles else None
+    return {
+        "symbol": symbol,
+        "interval": interval,
+        "days": days,
+        "source": source,
+        "delayed": delayed,
+        "as_of": str(last["t"]) if last else now_ist().isoformat(timespec="seconds"),
+        "count": len(candles),
+        "error": error,
+        "candles": candles,
+        "overlays": {
+            "vwap": _vwap_series(candles),
+            "ema20": _ema_series(closes, 20),
+            "ema50": _ema_series(closes, 50),
+        },
+        "levels": {
+            "entry": price, "stop": stop, "target": target,
+            "support": float(support) if support else None,
+            "resistance": float(resistance) if resistance else None,
+            "vwap": vwap or None, "ema20": ema20 or None, "ema50": ema50 or None,
+            "atr": atr, "risk": stop_dist, "reward": target - price, "risk_reward": risk_reward,
+        },
+        "rules": rules,
+        "markers": markers,
     }
 
 

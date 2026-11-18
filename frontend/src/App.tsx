@@ -14,12 +14,13 @@ import { api, exactPct, exactSigned, money, timeOnly } from './api'
 import PnlCalendar from './components/PnlCalendar'
 import EquityCurve from './components/EquityCurve'
 import ScanTable from './components/ScanTable'
+import StrategyChart from './components/StrategyChart'
 import TradesTable from './components/TradesTable'
 import SymbolDrawer from './components/SymbolDrawer'
 import SettingsPanel from './components/SettingsPanel'
 import GrowwPortfolio from './components/GrowwPortfolio'
 
-type Tab = 'overview' | 'scanner' | 'positions' | 'trades' | 'portfolio' | 'settings'
+type Tab = 'overview' | 'scanner' | 'chart' | 'positions' | 'trades' | 'portfolio' | 'settings'
 
 /** Dashboard polling interval - the whole screen refreshes once per second. */
 const LIVE_REFRESH_MS = 1000
@@ -27,6 +28,7 @@ const LIVE_REFRESH_MS = 1000
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'overview', label: 'Overview' },
   { id: 'scanner', label: 'Scanner' },
+  { id: 'chart', label: 'Strategy Chart' },
   { id: 'positions', label: 'Positions' },
   { id: 'trades', label: 'Trades' },
   { id: 'portfolio', label: 'Groww Portfolio' },
@@ -49,6 +51,7 @@ export default function App() {
   const [autotrade, setAutotrade] = useState(false)
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [selectedRow, setSelectedRow] = useState<ScanRow | null>(null)
+  const [chartSymbol, setChartSymbol] = useState('')
   const [scanFilter, setScanFilter] = useState('')
   const [scanStatus, setScanStatus] = useState('ALL')
   const [tradeFilter, setTradeFilter] = useState('')
@@ -187,6 +190,20 @@ export default function App() {
       return true
     })
   }, [scan, scanFilter, scanStatus])
+
+  const scanSymbols = useMemo(() => (scan?.results ?? []).map((r) => r.symbol), [scan])
+
+  const chartRow = useMemo<ScanRow>(() => {
+    const found = (scan?.results ?? []).find((r) => r.symbol === chartSymbol)
+    if (found) return found
+    return {
+      symbol: chartSymbol || scanSymbols[0] || 'RELIANCE',
+      price: 0, change_pct: 0, volume: null, score: 0, status: '', confirmations: 0,
+      buckets: {}, patterns: [], support: null, resistance: null, breakout: false,
+      quality: { score: 0, label: '—', components: {}, fundamentals_used: false },
+      indicators: {}, reasons: [], atr: null, fundamentals: null,
+    }
+  }, [chartSymbol, scan, scanSymbols])
 
   const sourceLabel = status?.data_source.active === 'groww' ? 'GROWW LIVE' : 'YAHOO DELAYED'
   const sourceClass = status?.data_source.active === 'groww' ? 'live' : 'warn'
@@ -526,6 +543,42 @@ export default function App() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {tab === 'chart' && (
+          <section>
+            <div className="page-head">
+              <div>
+                <h1>Strategy chart</h1>
+                <p>
+                  Candles with the active strategy drawn on them — entry, stop, target, VWAP, EMAs,
+                  support/resistance and pattern markers. Pick any scanned symbol or type your own.
+                </p>
+              </div>
+              <div className="toolbar">
+                <input
+                  className="input"
+                  list="chart-symbols"
+                  placeholder="Symbol (e.g. RELIANCE)"
+                  value={chartSymbol}
+                  onChange={(e) => setChartSymbol(e.target.value.trim().toUpperCase())}
+                />
+                <datalist id="chart-symbols">
+                  {scanSymbols.map((symbol) => <option key={symbol} value={symbol} />)}
+                </datalist>
+                <button className="btn ghost" onClick={() => setChartSymbol('')}>Clear</button>
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-body">
+                <StrategyChart row={chartRow} />
+              </div>
+            </div>
+            <div className="tiny muted" style={{ marginTop: 10 }}>
+              Levels come from <code>config/strategy.yaml</code>; candle data comes from Groww when
+              approved, otherwise the delayed Yahoo feed. Paper trading only — no real orders.
+            </div>
           </section>
         )}
 

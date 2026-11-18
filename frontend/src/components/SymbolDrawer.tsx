@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import type { ScanRow } from '../types'
 import { money, pct } from '../api'
+import StrategyChart from './StrategyChart'
 
 interface Props {
   row: ScanRow | null
@@ -32,9 +33,6 @@ export default function SymbolDrawer({ row, onClose }: Props) {
   if (!row) return null
 
   const atr = row.atr ?? (row.price * (row.indicators?.atr_pct ?? 1)) / 100
-  const stopDist = Math.max(row.price * 0.004, Math.min(row.price * 0.02, atr * 0.6))
-  const stop = row.price - stopDist
-  const target = row.price + stopDist * 2
 
   return (
     <div className="drawer-backdrop" onClick={onClose}>
@@ -50,6 +48,8 @@ export default function SymbolDrawer({ row, onClose }: Props) {
           </div>
           <button className="btn small ghost" onClick={onClose}>Close</button>
         </div>
+
+        <StrategyChart row={row} />
 
         <div className="detail-grid">
           <div className="detail-item">
@@ -141,15 +141,6 @@ export default function SymbolDrawer({ row, onClose }: Props) {
           </ul>
         </div>
 
-        <div className="drawer-section">
-          <h3>Indicative plan (bot sizes automatically)</h3>
-          <div className="stat-line"><span className="l">Entry</span><span className="v">₹{money(row.price)}</span></div>
-          <div className="stat-line"><span className="l">Stop</span><span className="v neg">₹{money(stop)}</span></div>
-          <div className="stat-line"><span className="l">Target (2R)</span><span className="v pos">₹{money(target)}</span></div>
-          <div className="tiny muted" style={{ marginTop: 8 }}>
-            Heuristic output, not investment advice. Patterns have false positives.
-          </div>
-        </div>
       </div>
     </div>
   )

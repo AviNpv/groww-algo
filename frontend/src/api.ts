@@ -13,6 +13,7 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.API_BASE_U
 
 import type {
   CalendarResponse,
+  ChartResponse,
   ConfigParseResponse,
   ConfigResponse,
   ConfigSaveResponse,
@@ -25,6 +26,7 @@ import type {
   ResetChallenge,
   ResetResponse,
   ScanResponse,
+  ScanRow,
   Status,
   Trade,
 } from './types'
@@ -68,6 +70,12 @@ export const api = {
   equity: (limit = 400) =>
     request<{ curve: EquityPoint[]; demo: boolean }>(`/equity?limit=${limit}`),
   scan: () => request<ScanResponse>('/scan'),
+  /** Candles + strategy levels/rules for one scanner candidate. */
+  chart: (row: ScanRow, interval = '5m', days = 5) =>
+    request<ChartResponse>('/chart', {
+      method: 'POST',
+      body: JSON.stringify({ symbol: row.symbol, interval, days, row }),
+    }),
   runScan: (autotrade: boolean) =>
     request<ScanResponse>('/scan', {
       method: 'POST',

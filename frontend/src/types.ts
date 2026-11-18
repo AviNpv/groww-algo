@@ -39,6 +39,60 @@ export interface ScanRow {
   fundamentals?: Record<string, unknown> | null
 }
 
+export interface ChartCandle {
+  t: string
+  o: number
+  h: number
+  l: number
+  c: number
+  v: number
+}
+
+export interface ChartRule {
+  label: string
+  required: string
+  actual: string
+  ok: boolean | null
+}
+
+export interface ChartMarker {
+  i: number
+  label: string
+  direction: string
+  note: string
+}
+
+export interface ChartLevels {
+  entry: number
+  stop: number
+  target: number
+  support: number | null
+  resistance: number | null
+  vwap: number | null
+  ema20: number | null
+  ema50: number | null
+  atr: number
+  risk: number
+  reward: number
+  risk_reward: number
+}
+
+export interface ChartResponse {
+  symbol: string
+  interval: string
+  days: number
+  source: string
+  delayed: boolean
+  as_of: string
+  count: number
+  error: string | null
+  candles: ChartCandle[]
+  overlays: { vwap: number[]; ema20: number[]; ema50: number[] }
+  levels: ChartLevels
+  rules: ChartRule[]
+  markers: ChartMarker[]
+}
+
 export interface Signal {
   symbol: string
   action: string

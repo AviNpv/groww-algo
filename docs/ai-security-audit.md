@@ -312,11 +312,17 @@ poll, which made a missing `GROQ_API_KEY` appear as repeated failed model calls.
 Health probes now call `ModelAdapter.health(record=False)`; only real
 `complete()` agent calls write usage. This reduces noisy evidence without
 changing any credential, gate, config or order surface. Final verification:
-`compileall` exit 0 and full discovery suite **71 tests, OK**.
+`compileall` exit 0 and full discovery suite **72 tests, OK**.
 
 The Groq key was configured in Render by the operator. Live probes showed the
 old default model is no longer available and that an explicit `User-Agent` is
 required; the model default was changed to `qwen/qwen3.8-27b` and the adapter
 now identifies itself. No credential is stored in the repository, prompts, logs,
 evidence rows or API responses, and `allow_paid` remains forced to `false`.
-Final verification: `compileall` exit 0 and full discovery suite **71 tests, OK**.
+Final verification: `compileall` exit 0 and full discovery suite **72 tests, OK**.
+
+The mode switch now synchronizes the research scheduler through the same helper
+used at startup. This closes an availability gap where AI could be enabled after
+boot while 24×7 research remained stopped. It adds no order capability, changes
+no risk limit, and keeps the committed default `intelligence.enabled: false`.
+Final verification: `compileall` exit 0 and full discovery suite **72 tests, OK**.

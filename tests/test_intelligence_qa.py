@@ -1293,6 +1293,37 @@ class ModeSwitchQATests(unittest.TestCase):
         with self.assertRaises(HTTPException):
             engine_api._validate_intelligence_config({"intelligence": {"enabled": "yes"}})
 
+    def test_mode_sync_starts_and_stops_research_scheduler(self):
+        started = []
+        stopped = []
+
+        class _Scheduler:
+            def start(self):
+                started.append(True)
+                return {"running": True}
+
+            def stop(self):
+                stopped.append(True)
+                return {"running": False}
+
+        with patch.object(engine_api, "_INTELLIGENCE_SCHEDULER", None), \
+             patch.object(ai_config, "enabled", return_value=True), \
+             patch.object(ai_config, "evolution",
+                          return_value={"research_enabled": True}), \
+             patch.object(storage, "init_db"), \
+             patch("engine.intelligence.scheduler.IntelligenceScheduler", _Scheduler):
+            enabled_status = engine_api._sync_intelligence_scheduler()
+            instance = engine_api._INTELLIGENCE_SCHEDULER
+            self.assertEqual(enabled_status, {"running": True})
+            self.assertEqual(started, [True])
+            self.assertIsInstance(instance, _Scheduler)
+
+            with patch.object(ai_config, "enabled", return_value=False):
+                disabled_status = engine_api._sync_intelligence_scheduler()
+            self.assertIsNone(disabled_status)
+            self.assertIsNone(engine_api._INTELLIGENCE_SCHEDULER)
+            self.assertEqual(stopped, [True])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

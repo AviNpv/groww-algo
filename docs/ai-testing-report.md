@@ -313,7 +313,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
 
 - `.\\.venv\\Scripts\\python.exe -m compileall -q engine tests scripts` → exit 0.
 - `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v` →
-  **Ran 71 tests ... OK** (71 passed, 0 failed, 0 errors, 0 expected failures,
+  **Ran 72 tests ... OK** (72 passed, 0 failed, 0 errors, 0 expected failures,
   0 skipped).
 - `npm run build` → `index-BQqRuSyT.js` (314,583 bytes) and
   `index-CRPZR5UK.css` (24,147 bytes); `dist/index.html` references both, the
@@ -321,7 +321,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
   and contains no `127.0.0.1:8010` string.
 
 The earlier 65-test counts and asset hashes remain historical evidence from the
-independent re-verification above. Current verdict: **PASS**, 71/71.
+independent re-verification above. Current verdict: **PASS**, 72/72.
 
 ### Fresh-store initialization addendum (2026-11-22)
 
@@ -358,4 +358,17 @@ this key. `ModelAdapter._headers()` now identifies the client explicitly, and
 the health probe sends a JSON-only system/user message pair plus
 `response_format: {"type": "json_object"}`. Added a model-pinned contract test
 and a health-probe request-shape test. Final verification: `compileall` exit 0
-and full discovery suite **71 tests, OK**.
+and full discovery suite **72 tests, OK**.
+
+### Mode-switch scheduler sync (2026-11-22)
+
+A production restart exposed that the research scheduler was started only by
+FastAPI's startup event. Enabling AI through the dashboard after boot therefore
+left `scheduler.running=false`. A restart also reset the locally written YAML to
+the committed default (`enabled:false`), confirming the free-plan ephemeral
+filesystem behaviour. `engine/api.py` now has one `_sync_intelligence_scheduler()`
+helper used by both startup and `POST /api/intelligence/mode`: enabling AI starts
+the research thread immediately, disabling it stops the thread, and the mode
+response reports the resulting scheduler status. The committed default remains
+`intelligence.enabled: false`. Added `test_mode_sync_starts_and_stops_research_scheduler`.
+Final verification: `compileall` exit 0 and full discovery suite **72 tests, OK**.

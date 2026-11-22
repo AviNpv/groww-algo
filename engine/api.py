@@ -41,6 +41,36 @@ app.include_router(intelligence_router)
 _INTELLIGENCE_SCHEDULER = None
 
 
+def _sync_intelligence_scheduler() -> dict | None:
+    """Start or stop the research thread to match the live AI/research config.
+
+    This is called both on app startup and immediately after the dashboard mode
+    switch, so enabling AI without restarting Render still starts 24x7 research.
+    Any failure is contained; the paper-trading engine is unaffected.
+    """
+    global _INTELLIGENCE_SCHEDULER
+    try:
+        from engine.intelligence import config as ai_config
+        from engine.intelligence import storage as ai_storage
+
+        if not ai_config.enabled() or not ai_config.evolution().get("research_enabled"):
+            existing = _INTELLIGENCE_SCHEDULER
+            _INTELLIGENCE_SCHEDULER = None
+            if existing is not None:
+                existing.stop()
+            return None
+
+        from engine.intelligence.scheduler import IntelligenceScheduler
+
+        ai_storage.init_db()
+        if _INTELLIGENCE_SCHEDULER is None:
+            _INTELLIGENCE_SCHEDULER = IntelligenceScheduler()
+        return _INTELLIGENCE_SCHEDULER.start()
+    except Exception:
+        _INTELLIGENCE_SCHEDULER = None
+        return None
+
+
 class ScanRequest(BaseModel):
     autotrade: bool = False
 
@@ -95,16 +125,7 @@ def _startup() -> None:
 
     # Optional research scheduler. Any failure is contained so the existing
     # paper-trading app still starts; model/agent health remains fail-closed.
-    try:
-        from engine.intelligence import config as ai_config
-        from engine.intelligence import storage as ai_storage
-        if ai_config.enabled() and ai_config.evolution().get("research_enabled"):
-            from engine.intelligence.scheduler import IntelligenceScheduler
-            ai_storage.init_db()
-            _INTELLIGENCE_SCHEDULER = IntelligenceScheduler()
-            _INTELLIGENCE_SCHEDULER.start()
-    except Exception:
-        _INTELLIGENCE_SCHEDULER = None
+    _sync_intelligence_scheduler()
 
 
 @app.on_event("shutdown")
@@ -888,11 +909,13 @@ def intelligence_mode(req: IntelligenceModeRequest, request: Request) -> dict:
         os.replace(tmp, default_path)
 
     load_config(force=True)
+    scheduler_status = _sync_intelligence_scheduler()
     mode = "AI" if req.enabled else "NORMAL"
     return {
         "ok": True,
         "enabled": bool(req.enabled),
         "mode": mode,
+        "scheduler": scheduler_status,
         "config": load_config(force=True),
         "yaml": CONFIG_PATH.read_text(encoding="utf-8"),
         "message": f"{mode} mode active; the next scan uses this setting.",

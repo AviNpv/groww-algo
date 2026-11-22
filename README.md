@@ -221,10 +221,17 @@ The **Intelligence → Trading mode** card has two buttons:
 Both modes are paper-only and neither changes capital, risk limits, execution
 permissions or square-off rules. The switch writes the same single boolean to
 `config/strategy.yaml` and `config/strategy.default.yaml` after full validation,
-so the next scan picks it up without a restart. If `INTELLIGENCE_ADMIN_TOKEN` is
+so the next scan picks it up without a restart. The switch also starts or stops
+the 24×7 research scheduler immediately, so enabling AI does not require a Render
+restart. If `INTELLIGENCE_ADMIN_TOKEN` is
 configured, the switch requires the token from the Operator token field; when it
 is unset, the switch uses the same existing operator trust boundary as the
 Settings editor, so restrict dashboard access to trusted users.
+
+On Render's free plan the local filesystem is ephemeral: a restart, redeploy or
+spin-down restores the committed default configuration. The committed default is
+Normal mode, so re-select **AI-assisted** after a restart. The mode switch now
+starts the research scheduler immediately, so no second restart is needed.
 
 #### Model setup
 
@@ -342,7 +349,7 @@ paper sessions.
 cd frontend && npm run build
 ```
 
-Latest local run: **71 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+Latest local run: **72 tests passed, 0 failed, 0 expected failures, 0 skipped**.
 The production bundle is committed under `frontend/dist/` with
 `index-BQqRuSyT.js` and `index-CRPZR5UK.css`; `dist/index.html` references those
 files and the bundle targets `https://groww-algo.onrender.com` (no local port).

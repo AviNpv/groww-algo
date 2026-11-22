@@ -56,7 +56,9 @@ CREATE TABLE IF NOT EXISTS trades (
     exit_reason TEXT,
     reason TEXT,
     mode TEXT NOT NULL DEFAULT 'paper',
-    demo INTEGER NOT NULL DEFAULT 0
+    demo INTEGER NOT NULL DEFAULT 0,
+    leverage REAL NOT NULL DEFAULT 1,
+    margin_blocked REAL
 );
 CREATE TABLE IF NOT EXISTS positions (
     trade_id INTEGER PRIMARY KEY,
@@ -70,7 +72,9 @@ CREATE TABLE IF NOT EXISTS positions (
     last_price REAL,
     opened_at TEXT NOT NULL,
     score REAL,
-    reason TEXT
+    reason TEXT,
+    leverage REAL NOT NULL DEFAULT 1,
+    margin_blocked REAL
 );
 CREATE TABLE IF NOT EXISTS equity_daily (
     day TEXT PRIMARY KEY,
@@ -131,10 +135,21 @@ def _conn():
         conn.close()
 
 
+def _ensure_columns(conn) -> None:
+    """Add leverage columns to databases created before intraday margin support."""
+    for table in ("trades", "positions"):
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if "leverage" not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN leverage REAL NOT NULL DEFAULT 1")
+        if "margin_blocked" not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN margin_blocked REAL")
+
+
 def init_db(starting_capital: float | None = None) -> None:
     cap = float(starting_capital or cfg("account", "starting_capital", default=10000))
     with _lock, _conn() as conn:
         conn.executescript(SCHEMA)
+        _ensure_columns(conn)
         row = conn.execute("SELECT id FROM account WHERE id = 1").fetchone()
         if row is None:
             conn.execute(
@@ -148,6 +163,7 @@ def reset(starting_capital: float | None = None, demo: bool = True) -> None:
     cap = float(starting_capital or cfg("account", "starting_capital", default=10000))
     with _lock, _conn() as conn:
         conn.executescript(SCHEMA)
+        _ensure_columns(conn)
         conn.execute("DELETE FROM positions")
         conn.execute("DELETE FROM trades")
         conn.execute("DELETE FROM signals")
@@ -192,11 +208,30 @@ def _market_value_and_unrealized(conn) -> tuple[float, float]:
     return market_value, unrealized
 
 
+def _position_margin(row) -> float:
+    """Cash blocked for one position; legacy rows fall back to full notional."""
+    qty, entry = int(row["qty"]), float(row["avg_price"])
+    columns = set(row.keys())
+    leverage = float(row["leverage"] or 1) if "leverage" in columns else 1.0
+    blocked = row["margin_blocked"] if "margin_blocked" in columns else None
+    if blocked is not None:
+        return float(blocked)
+    return entry * qty / max(leverage, 1.0)
+
+
+def _position_equity(conn) -> float:
+    """Margin blocked plus mark-to-market P&L, i.e. the real account exposure."""
+    unrealized = _market_value_and_unrealized(conn)[1]
+    margin = sum(_position_margin(row)
+                 for row in conn.execute("SELECT * FROM positions"))
+    return margin + unrealized
+
+
 def current_equity() -> float:
     with _conn() as conn:
         acc = conn.execute("SELECT * FROM account WHERE id = 1").fetchone()
-        mv, _ = _market_value_and_unrealized(conn)
-    return round(float(acc["cash"]) + mv, 2) if acc else 0.0
+        exposure = _position_equity(conn)
+    return round(float(acc["cash"]) + exposure, 2) if acc else 0.0
 
 
 def ensure_day() -> dict:
@@ -208,7 +243,7 @@ def ensure_day() -> dict:
             init_db()
             acc = conn.execute("SELECT * FROM account WHERE id = 1").fetchone()
         if acc["day_date"] != today:
-            equity = float(acc["cash"]) + _market_value_and_unrealized(conn)[0]
+            equity = float(acc["cash"]) + _position_equity(conn)
             prev_day = acc["day_date"]
             if prev_day:
                 _snapshot_conn(conn, prev_day)
@@ -239,23 +274,29 @@ def adjust_cash(delta: float) -> None:
 def open_trade(symbol: str, qty: int, price: float, stop: float, target: float,
                score: float, reason: str, charges: float = 0.0,
                mode: str = "paper", demo: bool | None = None,
-               ts: str | None = None) -> int:
+               ts: str | None = None, leverage: float = 1.0,
+               margin_blocked: float | None = None) -> int:
     ts = ts or now_ist().isoformat(timespec="seconds")
     demo_flag = 1 if (is_demo() if demo is None else demo) else 0
+    mult = max(float(leverage or 1), 1.0)
+    margin = (float(margin_blocked) if margin_blocked is not None
+              else float(price) * int(qty) / mult)
     with _lock, _conn() as conn:
         cur = conn.execute(
             "INSERT INTO trades (symbol, qty, entry_price, stop, target, opened_at,"
-            " charges, score, reason, mode, demo) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            " charges, score, reason, mode, demo, leverage, margin_blocked)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (symbol, int(qty), float(price), float(stop), float(target), ts,
-             float(charges), float(score), reason, mode, demo_flag),
+             float(charges), float(score), reason, mode, demo_flag, mult, margin),
         )
         trade_id = int(cur.lastrowid)
         conn.execute(
             "INSERT INTO positions (trade_id, symbol, qty, avg_price, stop, target,"
-            " initial_risk, highest_price, last_price, opened_at, score, reason)"
-            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            " initial_risk, highest_price, last_price, opened_at, score, reason,"
+            " leverage, margin_blocked) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (trade_id, symbol, int(qty), float(price), float(stop), float(target),
-             float(price) - float(stop), float(price), float(price), ts, float(score), reason),
+             float(price) - float(stop), float(price), float(price), ts,
+             float(score), reason, mult, margin),
         )
     return trade_id
 
@@ -290,6 +331,7 @@ def close_trade(trade_id: int, price: float, charges: float, reason: str,
         qty = int(pos["qty"])
         entry = float(pos["avg_price"])
         gross = (float(price) - entry) * qty
+        margin = _position_margin(pos)
         total_charges = float(trade["charges"] or 0) + float(charges or 0)
         pnl = gross - total_charges
         conn.execute(
@@ -299,7 +341,9 @@ def close_trade(trade_id: int, price: float, charges: float, reason: str,
         )
         conn.execute("DELETE FROM positions WHERE trade_id = ?", (int(trade_id),))
         acc = conn.execute("SELECT * FROM account WHERE id = 1").fetchone()
-        cash = float(acc["cash"]) + float(price) * qty
+        # Release the blocked margin and bank the P&L. For legacy rows margin
+        # falls back to the full entry notional, preserving old cash behaviour.
+        cash = _clean(float(acc["cash"]) + margin + gross)
         realized = float(acc["realized_pnl"]) + pnl
         conn.execute("UPDATE account SET cash = ?, realized_pnl = ? WHERE id = 1", (cash, realized))
     return {"pnl": round(pnl, 2), "gross": round(gross, 2), "charges": round(total_charges, 2)}
@@ -343,7 +387,7 @@ def _snapshot_conn(conn, day: str) -> None:
         return
     mv, unrealized = _market_value_and_unrealized(conn)
     cash = float(acc["cash"])
-    equity = cash + mv
+    equity = cash + _position_equity(conn)
     closed = conn.execute(
         "SELECT COUNT(*) n, SUM(CASE WHEN pnl > 0 THEN 1 ELSE 0 END) w,"
         " SUM(CASE WHEN pnl < 0 THEN 1 ELSE 0 END) l, SUM(pnl) p"
@@ -475,12 +519,15 @@ def overview() -> dict:
             init_db()
             acc = conn.execute("SELECT * FROM account WHERE id = 1").fetchone()
         mv, unrealized = _market_value_and_unrealized(conn)
+        exposure = _position_equity(conn)
+        margin_blocked = sum(_position_margin(r)
+                             for r in conn.execute("SELECT * FROM positions"))
         closed = conn.execute("SELECT * FROM trades WHERE closed_at IS NOT NULL").fetchall()
         day_rows = conn.execute("SELECT * FROM equity_daily ORDER BY day").fetchall()
         open_count = conn.execute("SELECT COUNT(*) n FROM positions").fetchone()["n"]
 
     cash = float(acc["cash"])
-    equity = cash + mv
+    equity = cash + exposure
     start = float(acc["starting_capital"]) or 1.0
     realized = float(acc["realized_pnl"])
     pnls = [float(t["pnl"] or 0) for t in closed]
@@ -505,6 +552,7 @@ def overview() -> dict:
     return {
         "equity": _clean(equity),
         "cash": _clean(cash),
+        "margin_blocked": _clean(margin_blocked),
         "market_value": _clean(mv),
         "starting_capital": _clean(start),
         "total_pnl": _clean(total_diff),

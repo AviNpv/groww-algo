@@ -203,9 +203,10 @@ def _run(days: int, overrides: dict | None, symbols: list[str] | None) -> dict:
                 rejections["position size rounded to zero"] += 1
                 continue
             buy_charges = broker.buy_charges(qty, entry, params)
-            buy_cost = entry * qty + buy_charges
-            if buy_cost > cash:
-                rejections["insufficient paper cash"] += 1
+            margin = entry * qty / broker.leverage(params)
+            cash_needed = margin + buy_charges
+            if cash_needed > cash:
+                rejections["insufficient intraday margin"] += 1
                 continue
 
             low = float(row["l"])
@@ -220,9 +221,10 @@ def _run(days: int, overrides: dict | None, symbols: list[str] | None) -> dict:
             fill = round(exit_price * (1 - slippage), 2)
             sell_charges = broker.sell_charges(qty, fill, params)
             proceeds = fill * qty - sell_charges
-            pnl = round(proceeds - buy_cost, 2)
+            trade_cost = entry * qty + buy_charges
+            pnl = round(proceeds - trade_cost, 2)
 
-            cash += proceeds - buy_cost
+            cash += margin + pnl
             equity = round(cash, 2)
             opened += 1
             risk_per_share = entry - stop

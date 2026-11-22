@@ -33,9 +33,10 @@ function summaryOf(config: ConfigMap | null): string {
   const confirmations = first(entry, 'required_confirmations', 'min_confirmations')
   const positions = first(account, 'max_positions')
   const risk = first(account, 'risk_per_trade')
+  const leverage = first(account, 'intraday_leverage', 'leverage')
   const version = first(app, 'version')
   if (score === undefined && positions === undefined) return 'Valid strategy document'
-  return `Valid · V${version ?? '—'} · min score ${score ?? '—'} · ${confirmations ?? '—'} confirmations · ${positions ?? '—'} positions · ₹${risk ?? '—'} risk`
+  return `Valid · V${version ?? '—'} · min score ${score ?? '—'} · ${confirmations ?? '—'} confirmations · ${positions ?? '—'} positions · ₹${risk ?? '—'} risk${leverage === undefined ? '' : ` · ${leverage}× leverage`}`
 }
 
 export default function SettingsPanel({ status, onChanged }: SettingsPanelProps) {

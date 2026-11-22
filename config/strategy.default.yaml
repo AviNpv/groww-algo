@@ -97,6 +97,10 @@ account:
   max_position_pct: 40
   reserve_capital_pct: 20
 
+  # Groww intraday leverage: buying power = capital x 5, margin = order value / 5.
+  # V4 risk_per_trade and daily-loss caps remain unchanged.
+  intraday_leverage: 5
+
   risk_per_trade: 10
   risk_per_trade_pct: 1.0
 

@@ -115,6 +115,11 @@ groww-algo/
 5. **Portfolio gates** — max 2 positions, 4 trades/day, 1 trade/symbol/day,
    ₹30 daily loss cap, 15-min loss cooldown, 3-loss halt, ₹1,000 starting capital.
 
+6. **Intraday leverage** — Groww-style 5× buying power (`account.intraday_leverage`).
+   Cash is blocked as `order value / 5`, while exposure and cash caps use the
+   leveraged amount. V4's ₹10 risk-per-trade and ₹30 daily-loss caps are unchanged,
+   so a stop still costs ₹10 — leverage only removes the small-capital ceiling.
+
 All of that is in `config/strategy.yaml`. Nothing is hard-coded in the loop.
 
 ---
@@ -156,7 +161,7 @@ speed, with per-symbol Groww candles as a fallback.
 - **Trades** — the full ledger with charges and exit reasons.
 - **Settings** — runtime config and the raw `strategy.yaml`.
 
-The page polls every 15 s (trades every 30 s), so it updates on its own.
+The page polls `/api/live` every 1 s, so the dashboard and calendar stay in sync.
 
 ---
 

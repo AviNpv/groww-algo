@@ -224,6 +224,7 @@ function buildStages(config: ConfigMap | null): Stage[] {
       tone: 'green',
       rows: [
         { label: 'Capital', value: rupee(first(account, 'initial_capital', account.starting_capital)) },
+        { label: 'Intraday leverage', value: `${num(first(account, 'intraday_leverage', account.leverage) ?? 5)}× · margin 1/${num(first(account, 'intraday_leverage', account.leverage) ?? 5)}`, tone: 'accent' },
         { label: 'Positions', value: `max ${num(first(risk, 'maximum_open_positions', account.max_positions))}` },
         { label: 'Risk / trade', value: rupee(first(risk, 'risk_per_trade', account.risk_per_trade)) },
         { label: 'Daily loss cap', value: rupee(first(risk, 'maximum_daily_loss', account.max_daily_loss)), tone: 'bad' },

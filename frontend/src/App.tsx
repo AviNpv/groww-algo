@@ -388,6 +388,14 @@ export default function App() {
                       <span className="v">₹{money(status?.config.risk_per_trade, 0)}</span>
                     </div>
                     <div className="stat-line">
+                      <span className="l">Intraday leverage</span>
+                      <span className="v">{status?.config.leverage ?? 5}× · margin 1/{(status?.config.leverage ?? 5)}</span>
+                    </div>
+                    <div className="stat-line">
+                      <span className="l">Margin blocked</span>
+                      <span className="v">₹{money(overview?.margin_blocked, 0)}</span>
+                    </div>
+                    <div className="stat-line">
                       <span className="l">Daily loss cap</span>
                       <span className="v">₹{money(status?.config.max_daily_loss, 0)}</span>
                     </div>
@@ -628,6 +636,10 @@ export default function App() {
                     <div className="stat-line"><span className="l">Stop</span><span className="v neg">₹{money(p.stop)}</span></div>
                     <div className="stat-line"><span className="l">Target</span><span className="v pos">₹{money(p.target)}</span></div>
                     <div className="stat-line"><span className="l">Value</span><span className="v">₹{money(p.value)}</span></div>
+                    <div className="stat-line">
+                      <span className="l">Leverage / margin</span>
+                      <span className="v">{p.leverage ?? 1}× · ₹{money(p.margin_blocked, 0)}</span>
+                    </div>
                     <button
                       className="btn danger"
                       style={{ width: '100%', marginTop: 10 }}

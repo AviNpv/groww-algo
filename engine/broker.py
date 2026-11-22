@@ -50,16 +50,29 @@ def sell_charges(qty: int, price: float, params: dict | None = None) -> float:
     return charges("SELL", qty, price, params)
 
 
+def leverage(params: dict | None = None) -> float:
+    """Groww-style intraday leverage multiplier (default 5x)."""
+    value = float(param(params, "account", "intraday_leverage", 5))
+    return value if value >= 1.0 else 1.0
+
+
 def size_position(price: float, stop: float, equity: float, cash: float,
                   params: dict | None = None) -> int:
-    """Risk-based intraday sizing, capped by exposure and available cash."""
+    """Risk-based sizing, capped by leveraged exposure and available margin.
+
+    Leverage multiplies buying power and the exposure cap, not the risk budget:
+    V4's risk_per_trade still decides the stop-loss loss. Cash is blocked as
+    margin (order value / leverage) rather than the full notional.
+    """
     risk_amount = float(param(params, "account", "risk_per_trade", 100))
     per_share = max(price - stop, 0.01)
     qty_risk = math.floor(risk_amount / per_share)
 
+    mult = leverage(params)
     max_pct = float(param(params, "account", "max_position_pct", 45)) / 100.0
-    qty_exposure = math.floor(equity * max_pct / price)
-    qty_cash = math.floor((cash - buy_charges(1, price, params)) / price)
+    qty_exposure = math.floor(equity * max_pct * mult / price)
+    buying_power = max(cash - buy_charges(1, price, params), 0.0) * mult
+    qty_cash = math.floor(buying_power / price)
 
     qty = max(0, min(qty_risk, qty_exposure, qty_cash))
     return int(qty)
@@ -69,18 +82,24 @@ def buy(symbol: str, price: float, qty: int, stop: float, target: float,
         score: float, reason: str) -> dict:
     fill = round(price * (1 + _slippage()), 2)
     charges = buy_charges(qty, fill)
-    cost = fill * qty + charges
+    mult = leverage()
+    notional = fill * qty
+    margin = notional / mult
+    cash_needed = margin + charges
     acc = ledger.account()
     cash = float(acc.get("cash", 0))
-    if cost > cash + 1e-6:
-        return {"ok": False, "error": f"insufficient paper cash: need {cost:.2f}, have {cash:.2f}"}
+    if cash_needed > cash + 1e-6:
+        return {"ok": False,
+                "error": f"insufficient paper margin: need {cash_needed:.2f}, have {cash:.2f}"}
 
     trade_id = ledger.open_trade(symbol, qty, fill, stop, target, score, reason,
-                                 charges=charges, mode="paper")
-    ledger.set_cash(cash - cost)
+                                 charges=charges, mode="paper",
+                                 leverage=mult, margin_blocked=margin)
+    ledger.set_cash(cash - cash_needed)
     return {
         "ok": True, "trade_id": trade_id, "symbol": symbol, "side": "BUY",
-        "qty": qty, "price": fill, "value": round(fill * qty, 2),
+        "qty": qty, "price": fill, "value": round(notional, 2),
+        "leverage": mult, "margin": round(margin, 2),
         "charges": round(charges, 2), "stop": stop, "target": target,
     }
 
@@ -100,6 +119,7 @@ def sell(trade_id: int, price: float, reason: str) -> dict:
     return {
         "ok": True, "trade_id": int(trade_id), "symbol": pos["symbol"], "side": "SELL",
         "qty": qty, "price": fill, "charges": round(charges, 2),
+        "leverage": pos.get("leverage", 1), "margin": pos.get("margin_blocked", 0),
         "pnl": result["pnl"], "reason": reason,
     }
 

@@ -319,6 +319,7 @@ def can_open_new(equity: float, params: dict | None = None) -> tuple[bool, str]:
         return False, f"cooldown active for {cooldown:g} min after a loss"
 
     min_cash = float(_p(params, "account", "minimum_order_value", 100))
-    if float(acc.get("cash", 0)) < min_cash:
-        return False, "insufficient cash"
+    leverage = max(float(_p(params, "account", "intraday_leverage", 5)), 1.0)
+    if float(acc.get("cash", 0)) * leverage < min_cash:
+        return False, "insufficient intraday margin"
     return True, ""

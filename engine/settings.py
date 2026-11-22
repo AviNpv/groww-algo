@@ -134,6 +134,10 @@ def _normalize(data: dict) -> dict:
     _alias(account, "max_trades_per_symbol_per_day", _first(
         account.get("max_trades_per_symbol_per_day"), risk.get("maximum_trades_per_symbol"), 1))
     _alias(account, "minimum_order_value", _first(account.get("minimum_order_value"), 100))
+    leverage = _first(account.get("intraday_leverage"),
+                      account.get("leverage"), 5)
+    _alias(account, "intraday_leverage", leverage)
+    _alias(account, "leverage", leverage)
     cooldown = _dict(risk.get("cooldown"))
     consecutive = _dict(risk.get("consecutive_losses"))
     _alias(account, "cooldown_after_loss_minutes", _first(

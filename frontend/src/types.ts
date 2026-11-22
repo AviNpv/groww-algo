@@ -130,6 +130,7 @@ export interface ScanResponse {
 export interface Overview {
   equity: number
   cash: number
+  margin_blocked?: number
   market_value: number
   starting_capital: number
   total_pnl: number
@@ -209,6 +210,8 @@ export interface Position {
   unrealized: number
   unrealized_pct: number
   r_multiple: number | null
+  leverage?: number
+  margin_blocked?: number
 }
 
 export interface PositionsResponse {
@@ -262,6 +265,7 @@ export interface Status {
     strategy?: string
     execution_mode?: string
     capital: number
+    leverage?: number
     risk_per_trade: number
     max_positions: number
     max_daily_loss: number

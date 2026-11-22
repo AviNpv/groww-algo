@@ -313,7 +313,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
 
 - `.\\.venv\\Scripts\\python.exe -m compileall -q engine tests scripts` → exit 0.
 - `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v` →
-  **Ran 67 tests ... OK** (67 passed, 0 failed, 0 errors, 0 expected failures,
+  **Ran 68 tests ... OK** (68 passed, 0 failed, 0 errors, 0 expected failures,
   0 skipped).
 - `npm run build` → `index-BQqRuSyT.js` (314,583 bytes) and
   `index-CRPZR5UK.css` (24,147 bytes); `dist/index.html` references both, the
@@ -321,4 +321,15 @@ flag and that a non-boolean flag is rejected. Final local verification:
   and contains no `127.0.0.1:8010` string.
 
 The earlier 65-test counts and asset hashes remain historical evidence from the
-independent re-verification above. Current verdict: **PASS**, 67/67.
+independent re-verification above. Current verdict: **PASS**, 68/68.
+
+### Fresh-store initialization addendum (2026-11-22)
+
+The first production render of the Intelligence tab exposed a real defect: the
+history endpoints returned HTTP 500 on a fresh deploy because
+`data/intelligence.sqlite` existed without tables. `engine/intelligence/storage.py`
+now applies `SCHEMA` inside `_conn()`, so every read and write self-initializes
+the separate evidence store. A new `StorageTests.test_fresh_store_is_initialized_by_reads`
+deletes the temporary database, calls a read endpoint helper and asserts an empty
+result plus successful schema creation. Final local verification: `compileall`
+exit 0 and full discovery suite **68 tests, OK**.

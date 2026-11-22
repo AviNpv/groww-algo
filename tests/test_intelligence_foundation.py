@@ -109,6 +109,13 @@ class StorageTests(unittest.TestCase):
         self.assertEqual(stored["status"], "candidate")
         self.assertEqual(stored["params"]["exit.target.target_r_mult"], 2.0)
 
+    def test_fresh_store_is_initialized_by_reads(self):
+        self.db.unlink(missing_ok=True)
+        self.assertFalse(self.db.exists())
+        self.assertEqual(storage.latest_decisions(), [])
+        self.assertEqual(storage.summary()["agent_reports"], 0)
+        self.assertTrue(self.db.exists())
+
     def test_execution_log_is_paper_only(self):
         entry = ExecutionLog(
             ts="2026-11-22T10:00:00+05:30",

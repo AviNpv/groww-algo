@@ -1,6 +1,6 @@
 # Autonomous Runtime Intelligence Layer — Design Checkpoint
 
-Branch: `ai-intelligence` · Baseline commit: `bc2136f` · Status: Phases 1–10 implemented and locally validated; awaiting independent sign-off and explicit deployment approval. Not pushed, not deployed.
+Branch: `main` (developed on `ai-intelligence`) · Baseline commit: `bc2136f` · Status: Phases 1–10 implemented, independently reviewed, merged to `main`, pushed and auto-deployed on Render. Default mode remains Normal (`intelligence.enabled: false`); AI mode is an explicit operator switch.
 
 ## 1. Baseline preserved
 

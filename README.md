@@ -328,7 +328,7 @@ paper sessions.
 
 ---
 
-## Validation evidence (local checkpoint, not deployed)
+## Validation evidence (deployed on Render)
 
 ```bat
 .\.venv\Scripts\python.exe -m compileall -q engine tests scripts
@@ -336,7 +336,7 @@ paper sessions.
 cd frontend && npm run build
 ```
 
-Latest local run: **67 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+Latest local run: **68 tests passed, 0 failed, 0 expected failures, 0 skipped**.
 The production bundle is committed under `frontend/dist/` with
 `index-BQqRuSyT.js` and `index-CRPZR5UK.css`; `dist/index.html` references those
 files and the bundle targets `https://groww-algo.onrender.com` (no local port).
@@ -352,7 +352,9 @@ awaited because the local research job runs multi-symbol backtests; its admin
 gate was verified by the 401 cases and code review. The Normal/AI mode switch
 was exercised in both configurations: with no admin token it returned 200 and
 flipped both YAML files to AI then back to Normal; with a token configured it
-returned 401 without/wrong token and 200 with the valid token.
+returned 401 without/wrong token and 200 with the valid token. A fresh-store
+check confirms the read-only intelligence history endpoints self-initialize the
+separate SQLite schema and return empty lists instead of HTTP 500.
 
 Independent evidence:
 
@@ -361,7 +363,9 @@ Independent evidence:
   final security verdict.
 - `docs/ai-intelligence-design.md` — architecture and phase gates.
 
-Nothing on this branch has been pushed or deployed. Production deployment
-requires QA/security sign-off and explicit approval. Keep
-`require_for_entries: true`, `fail_closed: true`, `auto_promote: false` and
-`allow_paid: false`.
+These changes are pushed to `main` and Render auto-deployed them to
+`https://groww-algo.onrender.com`. Production was verified to serve the new
+bundle (`index-BQqRuSyT.js` / `index-CRPZR5UK.css`), report `ok:true` from
+`/api/health`, default to `enabled:false` (Normal mode), and expose
+`POST /api/intelligence/mode`. Keep `require_for_entries: true`,
+`fail_closed: true`, `auto_promote: false` and `allow_paid: false`.

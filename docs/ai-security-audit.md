@@ -297,3 +297,12 @@ suite **67 tests, OK**, including the two new mode-switch tests. No deployment,
 broker or live-trading action was performed by this review. The earlier
 **PASS WITH CONDITIONS** verdict remains valid with the existing network-access
 condition.
+
+A subsequent production smoke found only an availability issue: the separate
+intelligence SQLite evidence store had no tables on a fresh deploy, so the four
+read-only history endpoints returned HTTP 500 and the Intelligence tab logged
+console errors. The fix applies the existing `SCHEMA` inside the storage
+connection helper; it changes no credentials, gates, config paths, order
+surfaces or strategy logic. Final verification after the fix: `compileall`
+exit 0 and full discovery suite **68 tests, OK**. The **PASS WITH CONDITIONS**
+verdict is unchanged.

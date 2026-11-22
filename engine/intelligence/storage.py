@@ -131,6 +131,11 @@ def _conn():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=15000")
     try:
+        # Fresh deployments have no intelligence database yet. Every read and
+        # write goes through this helper, so creating the schema here makes the
+        # empty store self-initializing without any explicit bootstrap step.
+        with _lock:
+            conn.executescript(SCHEMA)
         yield conn
         conn.commit()
     finally:

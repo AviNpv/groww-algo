@@ -136,7 +136,13 @@ class ModelAdapter:
         return None
 
     def _headers(self, api_key: str | None) -> dict[str, str]:
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        # Groq's edge rejects the default python-urllib user agent on POST with
+        # Cloudflare 1010. Identify this client explicitly instead.
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "GrowwAlgo/4.0 (paper research; OpenAI-compatible)",
+        }
         # A hosted credential is never forwarded to a user-configured local URL.
         if api_key and not self._uses_local:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -399,9 +405,13 @@ class ModelAdapter:
             self.rate_limiter.acquire()
             probe = {
                 "model": self.model_name,
-                "messages": [{"role": "user", "content": 'Reply with {"ok": true}.'}],
+                "messages": [
+                    {"role": "system", "content": "Return a JSON object only."},
+                    {"role": "user", "content": 'Reply with JSON: {"ok": true}.'},
+                ],
                 "temperature": 0,
                 "max_tokens": 8,
+                "response_format": {"type": "json_object"},
             }
             response = self._post(probe, key, min(self.timeout_seconds, 3.0))
             choices = response.get("choices")

@@ -34,6 +34,7 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(cfg["paper_only"])
         self.assertFalse(cfg["model"]["allow_paid"])
         self.assertEqual(cfg["model"]["provider"], "openai_compatible")
+        self.assertEqual(cfg["model"]["model"], "qwen/qwen3.8-27b")
 
 
 class StorageTests(unittest.TestCase):

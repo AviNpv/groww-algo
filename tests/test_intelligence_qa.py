@@ -748,6 +748,7 @@ class ModelAdapterQATests(unittest.TestCase):
         request = capture.calls[0][0]
         self.assertEqual(request.full_url, "https://api.groq.com/openai/v1/chat/completions")
         self.assertEqual(request.headers.get("Authorization"), f"Bearer {self.SECRET}")
+        self.assertTrue(any(k.lower() == "user-agent" for k in request.headers))
         body_text = request.data.decode("utf-8")
         self.assertNotIn(self.SECRET, body_text)
         self.assertNotIn(self.OTHER_SECRET, body_text)
@@ -787,6 +788,21 @@ class ModelAdapterQATests(unittest.TestCase):
             adapter.health()
         self.assertFalse(health.ok)
         self.assertEqual(len(store.usages), 1)
+
+    def test_health_probe_is_structured_and_identifies_client(self):
+        store = _UsageStore()
+        adapter = self._adapter(store, api_key_env="GROQ_API_KEY")
+        capture = _UrlopenCapture(self._response_bytes('{"ok": true}'))
+        env = _SpyEnviron({"GROQ_API_KEY": self.SECRET})
+        with patch.object(adapter_module.os, "environ", env), \
+             patch.object(adapter_module.urllib.request, "urlopen", capture):
+            health = adapter.health(record=False)
+        self.assertTrue(health.ok, health.message)
+        request = capture.calls[0][0]
+        self.assertTrue(any(k.lower() == "user-agent" for k in request.headers))
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertIn("json", json.dumps(body).lower())
+        self.assertEqual(body.get("response_format"), {"type": "json_object"})
 
     def test_health_endpoint_disables_usage_recording(self):
         calls = []

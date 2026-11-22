@@ -238,7 +238,7 @@ intelligence:
   model:
     provider: openai_compatible
     base_url: https://api.groq.com/openai/v1
-    model: llama-3.3-70b-versatile
+    model: qwen/qwen3.8-27b
     api_key_env: GROQ_API_KEY
     allow_paid: false
 ```
@@ -250,7 +250,10 @@ localhost calls never receive a hosted credential. Allowed hosted endpoints are
 `api.groq.com` and `generativelanguage.googleapis.com`. Unknown environment
 variable names or unapproved hosts are rejected by both the adapter and the
 Settings YAML validator. `allow_paid` is forced to `false` at runtime. There is
-no silent fallback to another provider or a paid model.
+no silent fallback to another provider or a paid model. The configured Groq
+model is `qwen/qwen3.8-27b`: `llama-3.3-70b-versatile` is no longer available on
+Groq. The adapter also sends an explicit `User-Agent`, because Groq's edge
+returns Cloudflare 1010 for the default `python-urllib` user agent on POST.
 
 Until a key/endpoint is configured, `/api/intelligence/health` reports
 `DEGRADED` and AI-dependent entries fail closed. No key value is ever stored in
@@ -339,7 +342,7 @@ paper sessions.
 cd frontend && npm run build
 ```
 
-Latest local run: **70 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+Latest local run: **71 tests passed, 0 failed, 0 expected failures, 0 skipped**.
 The production bundle is committed under `frontend/dist/` with
 `index-BQqRuSyT.js` and `index-CRPZR5UK.css`; `dist/index.html` references those
 files and the bundle targets `https://groww-algo.onrender.com` (no local port).

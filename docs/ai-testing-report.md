@@ -313,7 +313,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
 
 - `.\\.venv\\Scripts\\python.exe -m compileall -q engine tests scripts` → exit 0.
 - `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v` →
-  **Ran 70 tests ... OK** (70 passed, 0 failed, 0 errors, 0 expected failures,
+  **Ran 71 tests ... OK** (71 passed, 0 failed, 0 errors, 0 expected failures,
   0 skipped).
 - `npm run build` → `index-BQqRuSyT.js` (314,583 bytes) and
   `index-CRPZR5UK.css` (24,147 bytes); `dist/index.html` references both, the
@@ -321,7 +321,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
   and contains no `127.0.0.1:8010` string.
 
 The earlier 65-test counts and asset hashes remain historical evidence from the
-independent re-verification above. Current verdict: **PASS**, 70/70.
+independent re-verification above. Current verdict: **PASS**, 71/71.
 
 ### Fresh-store initialization addendum (2026-11-22)
 
@@ -345,3 +345,17 @@ usage, and `GET /api/intelligence/health` always uses that mode. Real
 `complete()` calls still record every usage row. Two regression tests verify the
 adapter flag and the endpoint call. Final verification: `compileall` exit 0 and
 full discovery suite **70 tests, OK**.
+
+### Groq compatibility fix (2026-11-22)
+
+After the key was configured in Render, live probes exposed two provider-side
+issues rather than application defects: `llama-3.3-70b-versatile` is no longer
+available on this Groq account, and Groq's edge returns Cloudflare 1010 for the
+default `python-urllib` user agent on POST. The default model in
+`engine/intelligence/config.py` and both strategy YAMLs is now
+`qwen/qwen3.8-27b`, which was confirmed available and returned valid JSON with
+this key. `ModelAdapter._headers()` now identifies the client explicitly, and
+the health probe sends a JSON-only system/user message pair plus
+`response_format: {"type": "json_object"}`. Added a model-pinned contract test
+and a health-probe request-shape test. Final verification: `compileall` exit 0
+and full discovery suite **71 tests, OK**.

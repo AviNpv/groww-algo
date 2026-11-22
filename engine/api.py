@@ -52,19 +52,15 @@ def _sync_intelligence_scheduler() -> dict | None:
     try:
         from engine.intelligence import config as ai_config
         from engine.intelligence import storage as ai_storage
+        from engine.intelligence import scheduler as ai_scheduler
 
         if not ai_config.enabled() or not ai_config.evolution().get("research_enabled"):
-            existing = _INTELLIGENCE_SCHEDULER
+            ai_scheduler.stop_scheduler()
             _INTELLIGENCE_SCHEDULER = None
-            if existing is not None:
-                existing.stop()
             return None
 
-        from engine.intelligence.scheduler import IntelligenceScheduler
-
         ai_storage.init_db()
-        if _INTELLIGENCE_SCHEDULER is None:
-            _INTELLIGENCE_SCHEDULER = IntelligenceScheduler()
+        _INTELLIGENCE_SCHEDULER = ai_scheduler.get_scheduler()
         return _INTELLIGENCE_SCHEDULER.start()
     except Exception:
         _INTELLIGENCE_SCHEDULER = None

@@ -370,5 +370,10 @@ filesystem behaviour. `engine/api.py` now has one `_sync_intelligence_scheduler(
 helper used by both startup and `POST /api/intelligence/mode`: enabling AI starts
 the research thread immediately, disabling it stops the thread, and the mode
 response reports the resulting scheduler status. The committed default remains
-`intelligence.enabled: false`. Added `test_mode_sync_starts_and_stops_research_scheduler`.
-Final verification: `compileall` exit 0 and full discovery suite **72 tests, OK**.
+`intelligence.enabled: false`. A follow-up production check found a second
+defect: the status endpoint created its own lazy scheduler object and therefore
+reported `running=false` while the real thread was running. `scheduler.py` now
+owns one process-wide instance via `get_scheduler()` / `stop_scheduler()`, used
+by startup, the mode switch and status. Added
+`test_mode_sync_starts_and_stops_research_scheduler`. Final verification:
+`compileall` exit 0 and full discovery suite **72 tests, OK**.

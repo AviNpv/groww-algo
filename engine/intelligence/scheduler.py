@@ -220,5 +220,26 @@ class IntelligenceScheduler:
                 self._status["next_research_at"] = None
 
 
+# One process-wide instance shared by the startup hook, the mode switch and
+# the read-only status endpoint. Without this, status can report a second,
+# never-started scheduler while the real research thread is running.
+_SCHEDULER: IntelligenceScheduler | None = None
+
+
+def get_scheduler() -> IntelligenceScheduler:
+    global _SCHEDULER
+    if _SCHEDULER is None:
+        _SCHEDULER = IntelligenceScheduler()
+    return _SCHEDULER
+
+
+def stop_scheduler() -> None:
+    global _SCHEDULER
+    existing = _SCHEDULER
+    _SCHEDULER = None
+    if existing is not None:
+        existing.stop()
+
+
 def _ts() -> str:
     return settings.now_ist().isoformat(timespec="seconds")

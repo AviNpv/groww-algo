@@ -43,6 +43,7 @@ from engine.intelligence import evolution as evolution_module
 from engine.intelligence import model_adapter as adapter_module
 from engine.intelligence import orchestrator as orchestrator_module
 from engine.intelligence import rule_engine as rules_module
+from engine.intelligence import scheduler as scheduler_module
 from engine.intelligence import storage
 from engine.intelligence.debate import DebateEngine
 from engine.intelligence.models import (
@@ -1298,15 +1299,24 @@ class ModeSwitchQATests(unittest.TestCase):
         stopped = []
 
         class _Scheduler:
+            def __init__(self):
+                self.running = False
+
             def start(self):
+                self.running = True
                 started.append(True)
                 return {"running": True}
 
             def stop(self):
+                self.running = False
                 stopped.append(True)
                 return {"running": False}
 
+            def status(self):
+                return {"running": self.running}
+
         with patch.object(engine_api, "_INTELLIGENCE_SCHEDULER", None), \
+             patch.object(scheduler_module, "_SCHEDULER", None), \
              patch.object(ai_config, "enabled", return_value=True), \
              patch.object(ai_config, "evolution",
                           return_value={"research_enabled": True}), \
@@ -1317,11 +1327,14 @@ class ModeSwitchQATests(unittest.TestCase):
             self.assertEqual(enabled_status, {"running": True})
             self.assertEqual(started, [True])
             self.assertIsInstance(instance, _Scheduler)
+            self.assertIs(scheduler_module.get_scheduler(), instance)
+            self.assertTrue(scheduler_module.get_scheduler().status()["running"])
 
             with patch.object(ai_config, "enabled", return_value=False):
                 disabled_status = engine_api._sync_intelligence_scheduler()
             self.assertIsNone(disabled_status)
             self.assertIsNone(engine_api._INTELLIGENCE_SCHEDULER)
+            self.assertIsNone(scheduler_module._SCHEDULER)
             self.assertEqual(stopped, [True])
 
 

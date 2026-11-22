@@ -30,7 +30,6 @@ _SECRET_TEXT = re.compile(
 )
 _BEARER_TEXT = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~-]+")
 _SAFE_KEYS = frozenset({"total_tokens", "prompt_tokens", "completion_tokens"})
-_SCHEDULER: Any = None
 
 _EVOLUTION_KEYS = (
     "research_enabled", "interval_hours", "auto_promote",
@@ -55,11 +54,9 @@ def _store():
 
 
 def _get_scheduler():
-    global _SCHEDULER
-    if _SCHEDULER is None:
-        from engine.intelligence.scheduler import IntelligenceScheduler
-        _SCHEDULER = IntelligenceScheduler()
-    return _SCHEDULER
+    """Return the same process-wide scheduler used by startup and mode switch."""
+    from engine.intelligence.scheduler import get_scheduler
+    return get_scheduler()
 
 
 def _get_evolution_engine():

@@ -325,4 +325,6 @@ The mode switch now synchronizes the research scheduler through the same helper
 used at startup. This closes an availability gap where AI could be enabled after
 boot while 24×7 research remained stopped. It adds no order capability, changes
 no risk limit, and keeps the committed default `intelligence.enabled: false`.
-Final verification: `compileall` exit 0 and full discovery suite **72 tests, OK**.
+Status now reads the same process-wide scheduler instance rather than creating a
+second one, so operators see the real research-thread state. Final verification:
+`compileall` exit 0 and full discovery suite **72 tests, OK**.

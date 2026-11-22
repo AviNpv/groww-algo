@@ -313,7 +313,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
 
 - `.\\.venv\\Scripts\\python.exe -m compileall -q engine tests scripts` → exit 0.
 - `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v` →
-  **Ran 68 tests ... OK** (68 passed, 0 failed, 0 errors, 0 expected failures,
+  **Ran 70 tests ... OK** (70 passed, 0 failed, 0 errors, 0 expected failures,
   0 skipped).
 - `npm run build` → `index-BQqRuSyT.js` (314,583 bytes) and
   `index-CRPZR5UK.css` (24,147 bytes); `dist/index.html` references both, the
@@ -321,7 +321,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
   and contains no `127.0.0.1:8010` string.
 
 The earlier 65-test counts and asset hashes remain historical evidence from the
-independent re-verification above. Current verdict: **PASS**, 68/68.
+independent re-verification above. Current verdict: **PASS**, 70/70.
 
 ### Fresh-store initialization addendum (2026-11-22)
 
@@ -333,3 +333,15 @@ the separate evidence store. A new `StorageTests.test_fresh_store_is_initialized
 deletes the temporary database, calls a read endpoint helper and asserts an empty
 result plus successful schema creation. Final local verification: `compileall`
 exit 0 and full discovery suite **68 tests, OK**.
+
+### Health-poll usage-log fix (2026-11-22)
+
+The Intelligence tab refreshes status every 5 seconds. Each refresh called
+`ModelAdapter.health()`, which wrote a `model_usage` row even though no agent
+call occurred. With no `GROQ_API_KEY` configured this produced repeated
+`API key environment variable GROQ_API_KEY is not set...` rows in the UI.
+`ModelAdapter.health(record=False)` now permits a bounded probe without writing
+usage, and `GET /api/intelligence/health` always uses that mode. Real
+`complete()` calls still record every usage row. Two regression tests verify the
+adapter flag and the endpoint call. Final verification: `compileall` exit 0 and
+full discovery suite **70 tests, OK**.

@@ -769,15 +769,37 @@ class ModelAdapterQATests(unittest.TestCase):
              patch.object(adapter_module.urllib.request, "urlopen",
                           _UrlopenCapture()) as capture:
             result = adapter.complete(_QAOutput, "sys", {"x": 1}, "qa_agent")
-            health = adapter.health()
+            health = adapter.health(record=False)
         self.assertFalse(result.ok)
         self.assertIsNone(result.data)
         self.assertIn("not set", result.error or "")
         self.assertFalse(health.ok)
         self.assertFalse(health.paid_allowed)
         self.assertEqual(capture.calls, [])
-        self.assertEqual(len(store.usages), 2)  # complete + health
+        self.assertEqual(len(store.usages), 1)  # complete only; polling health is not usage
         self.assertTrue(all(not usage.ok for usage in store.usages))
+
+    def test_health_recording_can_be_disabled_for_polling(self):
+        store = _UsageStore()
+        adapter = self._adapter(store, api_key_env="GROQ_API_KEY")
+        with patch.object(adapter_module.os, "environ", _SpyEnviron({})):
+            health = adapter.health(record=False)
+            adapter.health()
+        self.assertFalse(health.ok)
+        self.assertEqual(len(store.usages), 1)
+
+    def test_health_endpoint_disables_usage_recording(self):
+        calls = []
+
+        class _Probe:
+            def health(self, **kwargs):
+                calls.append(kwargs)
+                return {"ok": True, "healthy": True}
+
+        with patch.object(adapter_module, "ModelAdapter", _Probe):
+            result = intelligence_api.intelligence_health()
+        self.assertTrue(result["ok"])
+        self.assertEqual(calls, [{"record": False}])
 
     def test_structured_json_is_validated(self):
         store = _UsageStore()

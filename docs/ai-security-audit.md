@@ -306,3 +306,10 @@ connection helper; it changes no credentials, gates, config paths, order
 surfaces or strategy logic. Final verification after the fix: `compileall`
 exit 0 and full discovery suite **68 tests, OK**. The **PASS WITH CONDITIONS**
 verdict is unchanged.
+
+The dashboard also wrote a `model_usage` evidence row on every 5-second health
+poll, which made a missing `GROQ_API_KEY` appear as repeated failed model calls.
+Health probes now call `ModelAdapter.health(record=False)`; only real
+`complete()` agent calls write usage. This reduces noisy evidence without
+changing any credential, gate, config or order surface. Final verification:
+`compileall` exit 0 and full discovery suite **70 tests, OK**.

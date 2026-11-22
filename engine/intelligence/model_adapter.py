@@ -358,18 +358,23 @@ class ModelAdapter:
 
         return self._failure(last_error, started, correlation_id, key)
 
-    def health(self) -> ModelHealth:
-        """Bounded reachability check. Never raises and never saves a secret."""
+    def health(self, record: bool = True) -> ModelHealth:
+        """Bounded reachability check. Never raises and never saves a secret.
+
+        ``record=False`` is used by dashboard health polling so repeated status
+        refreshes do not fill the usage log with non-trading probe rows.
+        """
         started = time.monotonic()
         key = self._api_key()
 
         def result(ok: bool, message: str, response: dict[str, Any] | None = None) -> ModelHealth:
             latency = self._elapsed_ms(started)
             safe = _safe_text(message, key)
-            usage = self._usage(
-                response, ok, latency, None if ok else safe, None
-            )
-            self._save_usage(usage)
+            if record:
+                usage = self._usage(
+                    response, ok, latency, None if ok else safe, None
+                )
+                self._save_usage(usage)
             return ModelHealth(
                 ok=bool(ok),
                 provider=self.provider,

@@ -212,9 +212,15 @@ def intelligence_health() -> dict:
                 if method is None:
                     continue
                 try:
-                    health = method()
+                    # Dashboard polling probes health every few seconds. Keep
+                    # those probes out of the model-usage evidence log; real
+                    # agent calls still record usage in complete().
+                    health = method(record=False)
                 except TypeError:
-                    health = method(model_cfg)
+                    try:
+                        health = method()
+                    except TypeError:
+                        health = method(model_cfg)
             if hasattr(health, "model_dump"):
                 health = health.model_dump()
             if not isinstance(health, dict):

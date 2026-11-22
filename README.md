@@ -254,7 +254,10 @@ no silent fallback to another provider or a paid model.
 
 Until a key/endpoint is configured, `/api/intelligence/health` reports
 `DEGRADED` and AI-dependent entries fail closed. No key value is ever stored in
-YAML, prompts, logs, evidence rows or API responses.
+YAML, prompts, logs, evidence rows or API responses. Health polling is
+deliberately excluded from the model-usage log; a usage row with the message
+`API key environment variable GROQ_API_KEY is not set...` therefore means a real
+agent call was attempted, not that the dashboard merely refreshed its status.
 
 #### Strategy-changing actions
 
@@ -336,7 +339,7 @@ paper sessions.
 cd frontend && npm run build
 ```
 
-Latest local run: **68 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+Latest local run: **70 tests passed, 0 failed, 0 expected failures, 0 skipped**.
 The production bundle is committed under `frontend/dist/` with
 `index-BQqRuSyT.js` and `index-CRPZR5UK.css`; `dist/index.html` references those
 files and the bundle targets `https://groww-algo.onrender.com` (no local port).
@@ -354,7 +357,9 @@ was exercised in both configurations: with no admin token it returned 200 and
 flipped both YAML files to AI then back to Normal; with a token configured it
 returned 401 without/wrong token and 200 with the valid token. A fresh-store
 check confirms the read-only intelligence history endpoints self-initialize the
-separate SQLite schema and return empty lists instead of HTTP 500.
+separate SQLite schema and return empty lists instead of HTTP 500. Dashboard
+health polling no longer writes a usage row every 5 seconds; only real agent
+model calls are recorded.
 
 Independent evidence:
 

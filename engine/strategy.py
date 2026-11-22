@@ -282,7 +282,7 @@ def can_open_new(equity: float, params: dict | None = None) -> tuple[bool, str]:
     if open_count >= max_positions:
         return False, f"max {max_positions} open positions"
 
-    max_loss = float(_p(params, "account", "max_daily_loss", 30))
+    max_loss = float(_p(params, "account", "max_daily_loss", 300))
     day_start = float(acc.get("day_start_equity") or equity)
     if equity - day_start <= -abs(max_loss):
         return False, f"daily loss limit hit ({equity - day_start:.0f})"

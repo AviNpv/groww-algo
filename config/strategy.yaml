@@ -90,7 +90,7 @@ data:
 # ------------------------------------------------------------
 
 account:
-  initial_capital: 1000
+  initial_capital: 10000
   currency: "INR"
 
   max_positions: 2
@@ -98,13 +98,13 @@ account:
   reserve_capital_pct: 20
 
   # Groww intraday leverage: buying power = capital x 5, margin = order value / 5.
-  # V4 risk_per_trade and daily-loss caps remain unchanged.
+  # Absolute caps follow the configured percentages: 1% risk/trade, 3% daily loss.
   intraday_leverage: 5
 
-  risk_per_trade: 10
+  risk_per_trade: 100
   risk_per_trade_pct: 1.0
 
-  max_daily_loss: 30
+  max_daily_loss: 300
   max_daily_loss_pct: 3.0
 
   max_trades_per_day: 4
@@ -535,8 +535,8 @@ risk:
   minimum_risk_reward: 2.0
   preferred_risk_reward: 2.0
 
-  risk_per_trade: 10
-  maximum_daily_loss: 30
+  risk_per_trade: 100
+  maximum_daily_loss: 300
   maximum_open_positions: 2
 
   maximum_trades_per_day: 4

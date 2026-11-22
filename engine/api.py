@@ -109,7 +109,7 @@ def status() -> dict:
         "leverage": cfg("account", "intraday_leverage", default=5),
         "risk_per_trade": cfg("account", "risk_per_trade", default=100),
         "max_positions": cfg("account", "max_positions", default=2),
-        "max_daily_loss": cfg("account", "max_daily_loss", default=200),
+        "max_daily_loss": cfg("account", "max_daily_loss", default=300),
         "min_score": cfg("entry", "min_score", default=65),
         "required_confirmations": cfg("entry", "min_confirmations", default=3),
         "target_r_mult": cfg("exit", "target_r_mult", default=2.0),

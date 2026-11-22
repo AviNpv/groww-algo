@@ -128,7 +128,7 @@ def _normalize(data: dict) -> dict:
     risk = _dict(cfg.get("risk"))
     _alias(account, "starting_capital", _first(account.get("initial_capital"), 10000))
     _alias(account, "risk_per_trade", _first(account.get("risk_per_trade"), risk.get("risk_per_trade"), 100))
-    _alias(account, "max_daily_loss", _first(account.get("max_daily_loss"), risk.get("maximum_daily_loss"), 200))
+    _alias(account, "max_daily_loss", _first(account.get("max_daily_loss"), risk.get("maximum_daily_loss"), 300))
     _alias(account, "max_positions", _first(account.get("max_positions"), risk.get("maximum_open_positions"), 2))
     _alias(account, "max_trades_per_day", _first(account.get("max_trades_per_day"), risk.get("maximum_trades_per_day"), 10))
     _alias(account, "max_trades_per_symbol_per_day", _first(

@@ -113,12 +113,13 @@ groww-algo/
    exchange/SEBI/GST/STT charges.
 
 5. **Portfolio gates** — max 2 positions, 4 trades/day, 1 trade/symbol/day,
-   ₹30 daily loss cap, 15-min loss cooldown, 3-loss halt, ₹1,000 starting capital.
+   ₹300 daily loss cap, 15-min loss cooldown, 3-loss halt, ₹10,000 starting capital.
 
 6. **Intraday leverage** — Groww-style 5× buying power (`account.intraday_leverage`).
    Cash is blocked as `order value / 5`, while exposure and cash caps use the
-   leveraged amount. V4's ₹10 risk-per-trade and ₹30 daily-loss caps are unchanged,
-   so a stop still costs ₹10 — leverage only removes the small-capital ceiling.
+   leveraged amount. The ₹100 risk-per-trade and ₹300 daily-loss caps follow the
+   configured 1% / 3% of capital, so a stop still costs ₹100 — leverage only
+   removes the small-capital ceiling.
 
 All of that is in `config/strategy.yaml`. Nothing is hard-coded in the loop.
 

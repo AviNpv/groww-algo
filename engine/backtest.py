@@ -126,7 +126,7 @@ def _run(days: int, overrides: dict | None, symbols: list[str] | None) -> dict:
 
     starting_capital = float(_param(params, "account", "starting_capital", 10000))
     max_positions = int(_param(params, "account", "max_positions", 2))
-    max_daily_loss = float(_param(params, "account", "max_daily_loss", 200))
+    max_daily_loss = float(_param(params, "account", "max_daily_loss", 300))
     min_score = float(_param(params, "entry", "min_score", 65))
     lookback = int(_param(params, "entry", "breakout_lookback", 20))
     slippage = float(_param(params, "costs", "slippage_pct", 0.05)) / 100.0

@@ -56,8 +56,10 @@ serves `frontend/dist` at http://127.0.0.1:8000.
 ```
 groww-algo/
 ├─ config/
-│  ├─ strategy.yaml      ← every rule the bot follows (edit this, no restart)
-│  └─ nifty500.txt       ← universe, one NSE symbol per line
+│  ├─ strategy.yaml      ← V4 paper-trading rules (edit this, no restart)
+│  ├─ strategy.default.yaml ← shipped V4 defaults for "Restore"
+│  ├─ nifty500_symbols.txt ← V4 universe, one NSE symbol per line
+│  └─ nifty500.txt       ← legacy universe file
 ├─ engine/
 │  ├─ settings.py        config loader, IST market clock
 │  ├─ groww_auth.py      TOTP token minting + on-disk token cache
@@ -66,7 +68,7 @@ groww-algo/
 │  ├─ indicators.py      EMA, RSI, MACD, ATR, ADX, VWAP, Bollinger, 52w
 │  ├─ patterns.py        candlestick + chart pattern detection
 │  ├─ quality.py         liquidity / trend persistence / drawdown quality score
-│  ├─ scoring.py         composite 0-100 score across six weighted buckets
+│  ├─ scoring.py         V4 0-100 score across seven weighted categories
 │  ├─ universe.py        symbol loading + price/turnover filters
 │  ├─ marketdata.py      unified feed: Groww when authorised, else Yahoo
 │  ├─ scanner.py         full-universe scan pipeline
@@ -84,8 +86,8 @@ groww-algo/
 
 ## How a trade happens
 
-1. **Scan** (every `engine.scan_interval_sec`, default 5 min, inside the entry window)
-   - Bulk daily + 5-minute candles for the whole universe.
+1. **Scan** (every `engine.scan_interval_seconds`, 60 s in V4, inside 09:25–14:45)
+   - Bulk daily + 5-minute closed candles; 15-minute trend confirmation.
    - Indicators computed per symbol; ~20 symbols per second on cached data.
    - Patterns detected: engulfing, hammer, doji, marubozu, harami, breakout,
      breakdown, bull flag, ascending triangle, double bottom, head & shoulders,
@@ -94,23 +96,24 @@ groww-algo/
      stability and 52-week range position. yfinance fundamentals are blended in
      when available — Groww has **no fundamentals endpoint**, so the technical
      score stands alone when they are not.
-   - Composite score out of 100 across trend 22, momentum 20, pattern 20,
-     volume 13, quality 15, risk 10. `QUALIFIED` ≥ 65 with ≥ 3 buckets ≥ 50 %.
+   - V4 100-point score: trend 22, momentum 16, price pattern 16, volume 14,
+     market/sector 12, stock quality 10, risk quality 10. `QUALIFIED` needs 85+
+     with all 5 factor confirmations ≥ 50 %.
 
-2. **Entry** — only if every gate passes: qualified status, score, trend
-   (price > EMA20, EMA20 > EMA50), price above VWAP but not more than 2.5 %
-   extended, relative volume ≥ 1.4×, ATR 0.4–3.5 %, risk/reward ≥ 1.8.
-   Quantity is risk-based: ₹100 risk per trade, capped at 45 % of equity and
-   by available cash.
+2. **Entry** — long gates: qualified status, score ≥ 85, 5 confirmations,
+   EMA20 > EMA50 > EMA200, price above VWAP, RSI 55–72, ADX ≥ 20, relative
+   volume ≥ 1.5×, ATR 0.4–3.5 %, R:R ≥ 2, closed candle, and fresh Groww
+   confirmation. Yahoo is scanning-only in V4.
 
-3. **Manage** — stop at entry − 0.6×ATR (clamped 0.4–2 % of price), target 2R,
-   stop to break-even at +0.8R, then ATR trailing. Time stop 180 min.
+3. **Manage** — stop at entry − 1.2×ATR (clamped 0.4–2 %), target 2R, stop to
+   break-even at +1R, then stepped ATR + profit-lock trailing. Time stop 180 min.
 
-4. **Exit** — stop, target, time stop, or hard MIS square-off at 15:20 IST.
-   Fills include 0.05 % slippage per side, ₹20 brokerage, 0.025 % STT on sells.
+4. **Exit** — stop, target, time stop, or hard square-off of all positions at
+   15:20 IST. Fills include 0.05 % slippage, V4 brokerage (0.10 %, ₹20 cap),
+   exchange/SEBI/GST/STT charges.
 
-5. **Portfolio gates** — max 2 open positions, ₹200 daily loss cap, ₹10,000
-   starting capital.
+5. **Portfolio gates** — max 2 positions, 4 trades/day, 1 trade/symbol/day,
+   ₹30 daily loss cap, 15-min loss cooldown, 3-loss halt, ₹1,000 starting capital.
 
 All of that is in `config/strategy.yaml`. Nothing is hard-coded in the loop.
 

@@ -96,6 +96,10 @@ class AlgoEngine:
             due = self.next_scan_at is None or now >= self.next_scan_at
             in_window = in_entry_window(now)
             auto = bool(cfg("engine", "autotrade", default=True))
+            if not bool(cfg("engine", "allow_new_entries", default=True)):
+                auto = False
+            if not bool(cfg("engine", "allow_long", default=True)):
+                auto = False
             if in_window and due:
                 result = self.run_scan(autotrade=auto)
                 action["scan"] = {

@@ -54,7 +54,14 @@ def _to_frame(rows: list[dict]) -> pd.DataFrame | None:
     except (TypeError, AttributeError):
         pass
     frame = frame.rename(columns={"o": "o", "h": "h", "l": "l", "c": "c", "v": "v"})
-    return frame[["o", "h", "l", "c", "v"]].astype(float)
+    frame = frame[["o", "h", "l", "c", "v"]].astype(float)
+    frame = frame.dropna(subset=["o", "h", "l", "c", "v"])
+    frame = frame[(frame["h"] >= frame["l"]) & (frame["v"] >= 0)]
+    if cfg("data", "validation", "reject_zero_volume", default=True):
+        frame = frame[frame["v"] > 0]
+    if cfg("data", "validation", "reject_duplicate_candles", default=True):
+        frame = frame[~frame.index.duplicated(keep="last")]
+    return frame
 
 
 def health(force: bool = False) -> dict:
@@ -84,12 +91,15 @@ def health(force: bool = False) -> dict:
 
 
 def source() -> str:
-    return "groww" if health().get("ok") else "yahoo"
+    active = str(health().get("active") or "yahoo").lower()
+    return active if active in ("groww", "yahoo") else "none"
 
 
-def quotes(symbols: list[str], ttl: float = 8.0) -> list[dict]:
+def quotes(symbols: list[str], ttl: float | None = None) -> list[dict]:
     if not symbols:
         return []
+    if ttl is None:
+        ttl = float(cfg("engine", "quote_refresh_sec", default=8))
     if groww_usable():
         try:
             live = groww_data.quotes(symbols, ttl=ttl)
@@ -108,7 +118,7 @@ def quotes(symbols: list[str], ttl: float = 8.0) -> list[dict]:
 
 
 def quote(symbol: str) -> dict | None:
-    rows = quotes([symbol], ttl=4.0)
+    rows = quotes([symbol])
     return rows[0] if rows else None
 
 
@@ -154,8 +164,9 @@ def _groww_frames(symbols: list[str], intraday_interval: str) -> dict[str, dict]
     return out
 
 
-def frames(symbols: list[str], intraday_interval: str = "5m") -> dict[str, dict]:
+def frames(symbols: list[str], intraday_interval: str | None = None) -> dict[str, dict]:
     """Bulk daily + intraday frames for the whole universe."""
+    intraday_interval = intraday_interval or str(cfg("indicators", "execution_timeframe", default="5m"))
     pref = preference()
     if pref == "groww":
         if not groww_usable():
@@ -191,8 +202,9 @@ def frames(symbols: list[str], intraday_interval: str = "5m") -> dict[str, dict]
     return out
 
 
-def snapshot(symbols: list[str], intraday_interval: str = "5m") -> dict[str, dict]:
+def snapshot(symbols: list[str], intraday_interval: str | None = None) -> dict[str, dict]:
     """Quotes + frames keyed by symbol, ready for the scanner."""
+    intraday_interval = intraday_interval or str(cfg("indicators", "execution_timeframe", default="5m"))
     quote_rows = {q["symbol"]: q for q in quotes(symbols)}
     frame_map = frames(symbols, intraday_interval)
     out: dict[str, dict] = {}

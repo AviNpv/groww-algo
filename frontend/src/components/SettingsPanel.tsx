@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CredentialsStatus, ResetChallenge, Status } from '../types'
 import { api } from '../api'
+import StrategyFlowChart from './StrategyFlowChart'
 
 type ConfigMap = Record<string, unknown>
 
@@ -13,18 +14,34 @@ function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+
+const first = (node: Record<string, unknown>, ...keys: string[]): unknown => {
+  for (const key of keys) {
+    if (node[key] !== undefined && node[key] !== null) return node[key]
+  }
+  return undefined
+}
+
 function summaryOf(config: ConfigMap | null): string {
-  const score = config?.['entry'] && typeof config['entry'] === 'object'
-    ? (config['entry'] as Record<string, unknown>).min_score : undefined
-  const account = config?.['account'] && typeof config['account'] === 'object'
-    ? (config['account'] as Record<string, unknown>) : {}
-  if (score === undefined && account.max_positions === undefined) return 'Valid strategy document'
-  return `Valid · min score ${score ?? '—'} · ${account.max_positions ?? '—'} positions · ₹${account.risk_per_trade ?? '—'} risk`
+  if (!config) return 'Valid strategy document'
+  const app = asRecord(config.app)
+  const entry = asRecord(config.entry)
+  const account = asRecord(config.account)
+  const score = first(entry, 'minimum_score', 'min_score')
+  const confirmations = first(entry, 'required_confirmations', 'min_confirmations')
+  const positions = first(account, 'max_positions')
+  const risk = first(account, 'risk_per_trade')
+  const version = first(app, 'version')
+  if (score === undefined && positions === undefined) return 'Valid strategy document'
+  return `Valid · V${version ?? '—'} · min score ${score ?? '—'} · ${confirmations ?? '—'} confirmations · ${positions ?? '—'} positions · ₹${risk ?? '—'} risk`
 }
 
 export default function SettingsPanel({ status, onChanged }: SettingsPanelProps) {
   const [yaml, setYaml] = useState('')
   const [draft, setDraft] = useState('')
+  const [config, setConfig] = useState<ConfigMap | null>(null)
   const [parseState, setParseState] = useState<{ ok: boolean; message: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -54,6 +71,7 @@ export default function SettingsPanel({ status, onChanged }: SettingsPanelProps)
 
   const applyServer = useCallback((next: { config: ConfigMap; yaml: string }) => {
     setYaml(next.yaml)
+    setConfig(next.config)
     yamlRef.current = next.yaml
     if (!dirtyRef.current) {
       setDraft(next.yaml)
@@ -66,6 +84,7 @@ export default function SettingsPanel({ status, onChanged }: SettingsPanelProps)
     try {
       const res = await api.config()
       setYaml(res.yaml)
+      setConfig(res.config)
       yamlRef.current = res.yaml
       setDraft(res.yaml)
       draftRef.current = res.yaml
@@ -102,7 +121,10 @@ export default function SettingsPanel({ status, onChanged }: SettingsPanelProps)
     parseTimerRef.current = window.setTimeout(() => {
       parseTimerRef.current = null
       api.parseConfig(value)
-        .then((res) => setParseState({ ok: true, message: summaryOf(res.config) }))
+        .then((res) => {
+          setConfig(res.config)
+          setParseState({ ok: true, message: summaryOf(res.config) })
+        })
         .catch((err) => setParseState({ ok: false, message: errText(err) }))
     }, 450)
   }, [])
@@ -225,6 +247,8 @@ export default function SettingsPanel({ status, onChanged }: SettingsPanelProps)
           <b>DONE</b> — {notice}
         </div>
       )}
+
+      <StrategyFlowChart config={config} dirty={dirty && !loading} />
 
       <div className="card">
         <div className="card-head">

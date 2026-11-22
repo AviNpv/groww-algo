@@ -19,7 +19,10 @@ from pydantic import BaseModel
 
 from engine import backtest, broker, groww_auth, groww_data, ledger, marketdata, scanner, strategy, universe
 from engine.engine import ENGINE
-from engine.settings import BASE_DIR, CACHE_DIR, CONFIG_DIR, CONFIG_PATH, cfg, load_config, now_ist
+from engine.settings import (
+    BASE_DIR, CACHE_DIR, CONFIG_DIR, CONFIG_PATH,
+    cfg, load_config, load_raw_config, normalize_config, now_ist,
+)
 
 app = FastAPI(title="Groww Algo", version="1.0.0",
               description="Intraday market scanner + automatic paper trader")
@@ -99,11 +102,16 @@ def status() -> dict:
     info = ENGINE.status()
     info["config"] = {
         "mode": cfg("mode", default="paper"),
+        "version": str(cfg("app", "version", default="")),
+        "strategy": str(cfg("app", "name", default="Groww Algo")),
+        "execution_mode": str(cfg("engine", "execution_mode", default="paper")),
         "capital": cfg("account", "starting_capital", default=10000),
         "risk_per_trade": cfg("account", "risk_per_trade", default=100),
         "max_positions": cfg("account", "max_positions", default=2),
         "max_daily_loss": cfg("account", "max_daily_loss", default=200),
         "min_score": cfg("entry", "min_score", default=65),
+        "required_confirmations": cfg("entry", "min_confirmations", default=3),
+        "target_r_mult": cfg("exit", "target_r_mult", default=2.0),
         "scan_interval_sec": cfg("engine", "scan_interval_sec", default=300),
         "autotrade": bool(cfg("engine", "autotrade", default=True)),
         "data_source": marketdata.preference(),
@@ -341,13 +349,20 @@ def strategy_chart(req: ChartRequest) -> dict:
     ema50 = float(ind.get("ema50") or 0)
     rel_vol = float(ind.get("rel_vol") or 0)
     atr_pct = float(ind.get("atr_pct") or 0)
+    ema5_20 = float(ind.get("ema20_5m") or 0)
+    ema5_50 = float(ind.get("ema50_5m") or 0)
+    ema15_20 = float(ind.get("ema20_15m") or 0)
+    ema15_50 = float(ind.get("ema50_15m") or 0)
+    ema15_200 = float(ind.get("ema200_15m") or 0)
+    trend_conf = row.get("trend_confirmation") or {}
     atr = float(row.get("atr") or 0) or (price * atr_pct / 100 if atr_pct else 0)
     if not atr and candles:
         atr = _atr_from_candles(candles)
 
     stop_dist = strategy.stop_distance(price, atr) if price else 0.0
     stop = price - stop_dist
-    target_r = float(cfg("exit", "target_r_mult", default=2.0))
+    target_r = float(cfg("exit", "target", "target_r_mult",
+                         default=cfg("exit", "target_r_mult", default=2.0)))
     target = price + stop_dist * target_r
     resistance = row.get("resistance")
     if resistance and float(resistance) > price * 1.003 and float(resistance) < target:
@@ -360,26 +375,53 @@ def strategy_chart(req: ChartRequest) -> dict:
 
     score = float(row.get("score") or 0)
     confirmations = int(row.get("confirmations") or 0)
-    min_score = float(cfg("entry", "min_score", default=65))
-    min_conf = int(cfg("entry", "min_confirmations", default=3))
-    require_trend = bool(cfg("entry", "require_trend", default=True))
-    require_vwap = bool(cfg("entry", "require_above_vwap", default=True))
-    min_rv = float(cfg("entry", "min_relative_volume", default=1.4))
-    min_atr = float(cfg("entry", "min_atr_pct", default=0.4))
-    max_atr = float(cfg("entry", "max_atr_pct", default=3.5))
+    min_score = float(cfg("entry", "minimum_score", default=cfg("entry", "min_score", default=85)))
+    min_conf = int(cfg("entry", "required_confirmations",
+                       default=cfg("entry", "min_confirmations", default=5)))
+    require_trend = bool(cfg("entry", "trend", "ema_alignment",
+                             default=cfg("entry", "require_trend", default=True)))
+    require_vwap = bool(cfg("entry", "trend", "price_above_vwap",
+                            default=cfg("entry", "require_above_vwap", default=True)))
+    rsi_min = float(cfg("entry", "momentum", "rsi_min", default=55))
+    rsi_max = float(cfg("entry", "momentum", "rsi_max", default=72))
+    adx_min = float(cfg("entry", "momentum", "adx_min", default=20))
+    rsi = float(ind.get("rsi") or 0)
+    adx = float(ind.get("adx") or 0)
+    ema200 = float(ind.get("ema200") or 0)
+    min_rv = float(cfg("entry", "volume", "relative_volume_min",
+                       default=cfg("entry", "min_relative_volume", default=1.5)))
+    min_atr = float(cfg("entry", "volatility", "minimum_atr_pct",
+                        default=cfg("entry", "min_atr_pct", default=0.4)))
+    max_atr = float(cfg("entry", "volatility", "maximum_atr_pct",
+                        default=cfg("entry", "max_atr_pct", default=3.5)))
     max_ext = float(cfg("entry", "max_vwap_extension_pct", default=2.5))
-    min_rr = float(cfg("entry", "min_risk_reward", default=1.8))
+    min_rr = float(cfg("entry", "risk", "minimum_risk_reward",
+                       default=cfg("entry", "min_risk_reward", default=2.0)))
+    version = str(cfg("app", "version", default=""))
+    closed_only = bool(cfg("engine", "use_closed_candles_only", default=True))
 
     rules: list[dict] = []
     if row:
-        rules.append(rule("Composite score", f">= {min_score:g}", f"{score:g}", score >= min_score))
-        rules.append(rule("Factor confirmations", f">= {min_conf}", str(confirmations), confirmations >= min_conf))
+        rules.append(rule("Composite score (V4)", f">= {min_score:g}",
+                          f"{score:g}", score >= min_score))
+        rules.append(rule("Mandatory confirmations", f">= {min_conf} of 5",
+                          str(confirmations), confirmations >= min_conf))
         status = str(row.get("status") or "").upper()
         rules.append(rule("Scanner status", "QUALIFIED", status or "—", status == "QUALIFIED" or None))
         if require_trend:
-            rules.append(rule("Trend (EMA20 > EMA50, price > EMA20)", "required",
-                              f"{ema20:.2f} / {ema50:.2f}" if ema20 else "—",
-                              bool(ema20 and ema50 and ema20 > ema50 and price > ema20)))
+            aligned = bool(ema20 and ema50 and ema200 and ema20 > ema50 > ema200
+                           and price > ema20)
+            rules.append(rule("Daily EMA stack", "EMA20 > EMA50 > EMA200",
+                              f"{ema20:.2f} / {ema50:.2f} / {ema200:.2f}"
+                              if ema20 and ema50 and ema200 else "—", aligned))
+            rules.append(rule("5m EMA confirmation", "price > EMA20 > EMA50",
+                              f"{ema5_20:.2f} / {ema5_50:.2f}"
+                              if ema5_20 and ema5_50 else "—",
+                              trend_conf.get("5m")))
+            rules.append(rule("15m EMA confirmation", "price > EMA20 > EMA50 > EMA200",
+                              f"{ema15_20:.2f} / {ema15_50:.2f} / {ema15_200:.2f}"
+                              if ema15_20 and ema15_50 else "—",
+                              trend_conf.get("15m")))
         else:
             rules.append(rule("Trend filter", "disabled in strategy.yaml", "not required", None))
         if require_vwap:
@@ -389,23 +431,51 @@ def strategy_chart(req: ChartRequest) -> dict:
                               bool(vwap and price >= vwap and extension <= max_ext)))
         else:
             rules.append(rule("VWAP filter", "disabled in strategy.yaml", "not required", None))
-        rules.append(rule("Relative volume", f">= {min_rv:g}x", f"{rel_vol:.2f}x" if rel_vol else "—",
-                          rel_vol >= min_rv if rel_vol else None))
-        rules.append(rule("ATR volatility", f"{min_atr:g}% - {max_atr:g}%", f"{atr_pct:.2f}%" if atr_pct else "—",
+        rules.append(rule("RSI band", f"{rsi_min:g} - {rsi_max:g}",
+                          f"{rsi:.1f}" if rsi else "—",
+                          rsi_min <= rsi <= rsi_max if rsi else None))
+        rules.append(rule("ADX trend strength", f">= {adx_min:g}",
+                          f"{adx:.1f}" if adx else "—", adx >= adx_min if adx else None))
+        rules.append(rule("Relative volume", f">= {min_rv:g}x",
+                          f"{rel_vol:.2f}x" if rel_vol else "—", rel_vol >= min_rv if rel_vol else None))
+        rules.append(rule("ATR volatility", f"{min_atr:g}% - {max_atr:g}%",
+                          f"{atr_pct:.2f}%" if atr_pct else "—",
                           min_atr <= atr_pct <= max_atr if atr_pct else None))
-        rules.append(rule("Risk : reward", f">= {min_rr:g}R", f"{risk_reward:.2f}R", risk_reward >= min_rr))
+        patterns = ", ".join(str(p.get("name")) for p in (row.get("patterns") or [])
+                             if isinstance(p, dict)) or "none detected"
+        rules.append(rule("Price pattern / breakout", "breakout, retest or candle pattern",
+                          patterns, bool(row.get("patterns")) or None))
+        rules.append(rule("Closed candle", "closed bars only" if closed_only else "forming bars allowed",
+                          "closed 5m bar" if row.get("closed_candle", True) else "forming bar",
+                          bool(row.get("closed_candle", True)) if closed_only else None))
+        rules.append(rule("Risk : reward", f">= {min_rr:g}R",
+                          f"{risk_reward:.2f}R", risk_reward >= min_rr))
     else:
         rules.append(rule("Select a scanner row", "—", "no candidate selected", None))
 
-    rules.append(rule("Stop loss", f"ATR x {float(cfg('exit', 'stop_atr_mult', default=1.2)):g}, clamped 0.4%-2%",
+    stop_mult = float(cfg("exit", "initial_stop_loss", "atr_multiplier",
+                          default=cfg("exit", "stop_atr_mult", default=1.2)))
+    min_stop = float(cfg("exit", "initial_stop_loss", "minimum_stop_pct",
+                         default=cfg("exit", "min_stop_pct", default=0.4)))
+    max_stop = float(cfg("exit", "initial_stop_loss", "maximum_stop_pct",
+                         default=cfg("exit", "max_stop_pct", default=2.0)))
+    rules.append(rule("Stop loss", f"ATR x {stop_mult:g}, clamped {min_stop:g}%-{max_stop:g}%",
                       f"₹{stop:.2f} ({stop_dist:.2f} below entry)", True))
     rules.append(rule("Target", f"{target_r:g}R" + (" (capped at resistance)" if resistance and float(resistance) < price + stop_dist * target_r else ""),
                       f"₹{target:.2f}", True))
     rules.append(rule("Time stop / square-off",
-                      f"{int(cfg('exit', 'time_stop_minutes', default=180))} min, {cfg('exit', 'square_off', default='15:20')} IST",
+                      f"{int(cfg('exit', 'time_stop', 'maximum_holding_minutes', default=cfg('exit', 'time_stop_minutes', default=180)))} min, "
+                      f"{cfg('exit', 'square_off', 'time', default=cfg('exit', 'square_off', default='15:20'))} IST",
                       "intraday only", True))
-    rules.append(rule("Entry confirmation", "Groww fresh data", marketdata.health().get("state", "unknown"),
-                      bool(marketdata.groww_usable())))
+    health = marketdata.health()
+    if bool(cfg("data", "groww", "use_for_entry_confirmation", default=True)):
+        rules.append(rule("Groww entry confirmation", "fresh Groww quote",
+                          str(health.get("state", "unknown")), bool(marketdata.groww_usable())))
+    else:
+        rules.append(rule("Entry confirmation", "disabled in strategy.yaml", "not required", None))
+    if version:
+        rules.append(rule("Strategy document", f"V{version} · {str(cfg('app', 'mode', default='paper')).upper()}",
+                          str(cfg("app", "name", default="Groww Algo")), True))
 
     markers = []
     lookback = int(cfg("entry", "breakout_lookback", default=20))
@@ -494,76 +564,153 @@ def config() -> dict:
     }
 
 
-REQUIRED_SECTIONS = ("engine", "account", "costs", "universe", "entry", "exit", "scoring")
+REQUIRED_SECTIONS_V2 = ("engine", "account", "costs", "universe", "entry", "exit", "scoring")
+REQUIRED_SECTIONS_V4 = (
+    "app", "engine", "data", "account", "costs", "universe", "indicators",
+    "market_filter", "entry", "short_entry", "scoring", "exit", "risk",
+    "execution", "performance", "safety",
+)
+
+
+def _nested(data: dict, *path: str, default=None):
+    node = data
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return default
+        node = node[key]
+    return node
+
+
+def _validate_number(data: dict, path: tuple[str, ...], low: float | None,
+                     high: float | None) -> None:
+    value = _nested(data, *path)
+    if value is None:
+        return
+    label = ".".join(path)
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} must be a number") from exc
+    if low is not None and number < low:
+        raise HTTPException(status_code=400, detail=f"{label} must be >= {low:g}")
+    if high is not None and number > high:
+        raise HTTPException(status_code=400, detail=f"{label} must be <= {high:g}")
+
+
+def _validate_weights(data: dict) -> None:
+    weights = _nested(data, "scoring", "weights", default={}) or {}
+    if not isinstance(weights, dict) or not weights:
+        return
+    try:
+        total = sum(float(v) for v in weights.values())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="scoring.weights must all be numbers") from exc
+    if abs(total - 100) > 0.01:
+        raise HTTPException(status_code=400,
+                            detail=f"scoring.weights must total 100 (currently {total:g})")
+
+
+def _validate_time(value, label: str) -> None:
+    try:
+        hh, mm = str(value).split(":")[:2]
+        if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
+            raise ValueError
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{label} must be HH:MM") from exc
 
 
 def _validate_strategy(text: str) -> dict:
-    """Parse + sanity-check a strategy document before it is written."""
+    """Parse + sanity-check a V4 or legacy strategy document before writing."""
     try:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise HTTPException(status_code=400, detail=f"YAML parse error: {exc}") from exc
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="The strategy must be a YAML mapping")
-    missing = [s for s in REQUIRED_SECTIONS if not isinstance(data.get(s), dict)]
+
+    is_v4 = bool(data.get("app")) or "minimum_score" in (data.get("entry") or {}) \
+        if isinstance(data.get("entry"), dict) else bool(data.get("app"))
+    required = REQUIRED_SECTIONS_V4 if is_v4 else REQUIRED_SECTIONS_V2
+    missing = [s for s in required if not isinstance(data.get(s), dict)]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing or invalid sections: {', '.join(missing)}")
 
-    def number(section: str, key: str) -> float | None:
-        value = (data.get(section) or {}).get(key)
-        if value is None:
-            return None
-        try:
-            return float(value)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"{section}.{key} must be a number") from exc
+    if is_v4:
+        checks: list[tuple[tuple[str, ...], float | None, float | None]] = [
+            (("engine", "scan_interval_seconds"), 15, None),
+            (("engine", "quote_refresh_seconds"), 1, None),
+            (("account", "initial_capital"), 1, None),
+            (("account", "risk_per_trade"), 0.01, None),
+            (("account", "max_positions"), 1, 20),
+            (("account", "max_daily_loss"), 0, None),
+            (("account", "max_position_pct"), 1, 100),
+            (("entry", "minimum_score"), 0, 100),
+            (("entry", "required_confirmations"), 0, 10),
+            (("entry", "min_risk_reward"), 0, None),
+            (("entry", "momentum", "rsi_min"), 0, 100),
+            (("entry", "momentum", "rsi_max"), 0, 100),
+            (("entry", "momentum", "adx_min"), 0, 100),
+            (("short_entry", "minimum_score"), 0, 100),
+            (("short_entry", "required_confirmations"), 0, 10),
+            (("exit", "initial_stop_loss", "atr_multiplier"), 0.1, None),
+            (("exit", "initial_stop_loss", "minimum_stop_pct"), 0, None),
+            (("exit", "initial_stop_loss", "maximum_stop_pct"), 0, None),
+            (("exit", "target", "target_r_mult"), 0.1, None),
+            (("exit", "time_stop", "maximum_holding_minutes"), 1, None),
+            (("costs", "brokerage", "per_order"), 0, None),
+            (("costs", "brokerage", "percentage"), 0, 100),
+            (("costs", "gst_pct"), 0, 100),
+            (("costs", "slippage_pct"), 0, 100),
+            (("data", "validation", "max_quote_age_seconds"), 0, None),
+        ]
+        for path, low, high in checks:
+            _validate_number(data, path, low, high)
+        _validate_weights(data)
+        _validate_time(_nested(data, "exit", "square_off", "time", default="15:20"),
+                       "exit.square_off.time")
 
-    checks = [
-        ("account", "starting_capital", 1, None),
-        ("account", "risk_per_trade", 0.01, None),
-        ("account", "max_positions", 1, 20),
-        ("account", "max_daily_loss", 0, None),
-        ("account", "max_position_pct", 1, 100),
-        ("entry", "min_score", 0, 100),
-        ("entry", "min_confirmations", 0, 6),
-        ("entry", "min_relative_volume", 0, None),
-        ("entry", "min_risk_reward", 0, None),
-        ("exit", "target_r_mult", 0.1, None),
-        ("exit", "time_stop_minutes", 1, None),
-        ("engine", "scan_interval_sec", 15, None),
-        ("costs", "brokerage_per_order", 0, None),
-        ("costs", "brokerage_pct", 0, 100),
-        ("costs", "gst_pct", 0, 100),
-        ("costs", "slippage_pct", 0, 100),
-    ]
-    for section, key, low, high in checks:
-        value = number(section, key)
-        if value is None:
-            continue
-        if low is not None and value < low:
-            raise HTTPException(status_code=400, detail=f"{section}.{key} must be >= {low}")
-        if high is not None and value > high:
-            raise HTTPException(status_code=400, detail=f"{section}.{key} must be <= {high}")
-
-    weights = (data.get("scoring") or {}).get("weights") or {}
-    if weights:
-        try:
-            total = sum(float(v) for v in weights.values())
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail="scoring.weights must all be numbers") from exc
-        if abs(total - 100) > 0.01:
+        source = str(_nested(data, "data", "source_mode", default="auto")).strip().lower()
+        if source == "yahoo_finance":
+            source = "yahoo"
+        if source not in ("auto", "groww", "yahoo"):
             raise HTTPException(status_code=400,
-                                detail=f"scoring.weights must total 100 (currently {total:g})")
+                                detail="data.source_mode must be one of: auto, groww, yahoo_finance")
 
-    square = (data.get("exit") or {}).get("square_off", "15:20")
-    try:
-        hh, mm = str(square).split(":")[:2]
-        if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
-            raise ValueError
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="exit.square_off must be HH:MM") from exc
+        if str(_nested(data, "app", "mode", default="paper")).lower() != "paper":
+            raise HTTPException(status_code=400, detail="V4 only supports app.mode: paper")
+        if str(_nested(data, "engine", "execution_mode", default="paper")).lower() != "paper":
+            raise HTTPException(status_code=400, detail="engine.execution_mode must be paper")
+        if _nested(data, "execution", "live_trading", "allow_live_orders", default=False):
+            raise HTTPException(status_code=400, detail="execution.live_trading must stay disabled")
+        for key in ("live_trading_disabled", "real_order_placement_disabled"):
+            if _nested(data, "safety", key, default=True) is False:
+                raise HTTPException(status_code=400, detail=f"safety.{key} must be true")
+        return data
 
-    source = str((data.get("engine") or {}).get("data_source", "auto")).strip().lower()
+    legacy_checks: list[tuple[tuple[str, ...], float | None, float | None]] = [
+        (("account", "starting_capital"), 1, None),
+        (("account", "risk_per_trade"), 0.01, None),
+        (("account", "max_positions"), 1, 20),
+        (("account", "max_daily_loss"), 0, None),
+        (("account", "max_position_pct"), 1, 100),
+        (("entry", "min_score"), 0, 100),
+        (("entry", "min_confirmations"), 0, 6),
+        (("entry", "min_relative_volume"), 0, None),
+        (("entry", "min_risk_reward"), 0, None),
+        (("exit", "target_r_mult"), 0.1, None),
+        (("exit", "time_stop_minutes"), 1, None),
+        (("engine", "scan_interval_sec"), 15, None),
+        (("costs", "brokerage_per_order"), 0, None),
+        (("costs", "brokerage_pct"), 0, 100),
+        (("costs", "gst_pct"), 0, 100),
+        (("costs", "slippage_pct"), 0, 100),
+    ]
+    for path, low, high in legacy_checks:
+        _validate_number(data, path, low, high)
+    _validate_weights(data)
+    _validate_time(_nested(data, "exit", "square_off", default="15:20"), "exit.square_off")
+
+    source = str(_nested(data, "engine", "data_source", default="auto")).strip().lower()
     if source not in ("auto", "groww", "yahoo"):
         raise HTTPException(status_code=400,
                             detail="engine.data_source must be one of: auto, groww, yahoo")
@@ -659,7 +806,8 @@ def config_value(req: ConfigValue) -> dict:
 @app.post("/api/config/parse")
 def config_parse(req: StrategySave) -> dict:
     """Validate YAML without saving — used for the live editor preview."""
-    return {"ok": True, "config": _validate_strategy(req.yaml)}
+    raw = _validate_strategy(req.yaml)
+    return {"ok": True, "config": normalize_config(raw)}
 
 
 # --------------------------------------------------------------------------

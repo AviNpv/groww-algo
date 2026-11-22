@@ -1,6 +1,8 @@
 """Technical indicators implemented with pandas/numpy only (no TA-Lib)."""
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -100,8 +102,8 @@ def enrich(df: pd.DataFrame, intraday: bool = False) -> pd.DataFrame:
     out["adx"] = adx(out, 14)
     out["vol_sma20"] = sma(out["v"], 20)
     out["rel_vol"] = out["v"] / out["vol_sma20"].replace(0, np.nan)
-    out["roc5"] = c.pct_change(5) * 100
-    out["roc20"] = c.pct_change(20) * 100
+    out["roc5"] = c.pct_change(5, fill_method=None) * 100
+    out["roc20"] = c.pct_change(20, fill_method=None) * 100
 
     if intraday:
         out["vwap"] = vwap(out)
@@ -120,10 +122,39 @@ def enrich(df: pd.DataFrame, intraday: bool = False) -> pd.DataFrame:
     out["low_52w"] = roll_low
     out["pos_52w"] = (c - roll_low) / (roll_high - roll_low).replace(0, np.nan) * 100
 
-    out["ret1"] = c.pct_change(1) * 100
-    out["ret5"] = c.pct_change(5) * 100
-    out["ret20"] = c.pct_change(20) * 100
+    out["ret1"] = c.pct_change(1, fill_method=None) * 100
+    out["ret5"] = c.pct_change(5, fill_method=None) * 100
+    out["ret20"] = c.pct_change(20, fill_method=None) * 100
     return out
+
+
+def _pandas_rule(rule: str) -> str:
+    """Translate V4 shorthand: 5m/15m mean minutes, not pandas month-end."""
+    text = str(rule or "15min").strip().lower()
+    match = re.fullmatch(r"(\d+)\s*m", text)
+    if match:
+        return f"{int(match.group(1))}min"
+    if text in ("m", "mo", "1mo", "month", "1month"):
+        return "ME"
+    aliases = {"d": "D", "1d": "D", "day": "D", "w": "W", "1w": "W", "week": "W"}
+    return aliases.get(text, text)
+
+
+def resample(frame: pd.DataFrame | None, rule: str = "15min") -> pd.DataFrame | None:
+    """Build a higher-timeframe frame (e.g. 15m from 5m) for V4 confirmation."""
+    if frame is None or frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
+        return None
+    rule = _pandas_rule(rule)
+    funcs = {"o": "first", "h": "max", "l": "min", "c": "last", "v": "sum"}
+    cols = {key: funcs[key] for key in ("o", "h", "l", "c", "v") if key in frame}
+    if len(cols) < 5:
+        return None
+    out = frame.resample(rule).agg(cols).dropna(subset=["o", "h", "l", "c"])
+    if len(out) < 5:
+        return None
+    # Keep short histories too: indicators.last() substitutes safe defaults for
+    # not-yet-available EMAs instead of discarding the whole frame.
+    return enrich(out, intraday=True)
 
 
 def last(df: pd.DataFrame | None, column: str, default: float = 0.0) -> float:

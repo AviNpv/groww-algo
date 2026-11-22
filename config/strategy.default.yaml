@@ -1,90 +1,706 @@
-# ==========================================================================
-#  GROWW ALGO — STRATEGY CONFIGURATION
-#  This file is the single source of truth for the bot's rules.
-#  Edit it and the next scan picks the changes up automatically.
-#  All trading is SIMULATED (paper). No real order is ever placed.
-# ==========================================================================
+# ============================================================
+# GROWW ALGO V4 - PAPER TRADING CONFIGURATION
+# Strategy: Multi-Timeframe Momentum + Breakout
+# Risk Reward: 1:2
+# Minimum Entry Score: 85/100
+# Execution: PAPER TRADING ONLY
+# ============================================================
 
-mode: paper                      # paper | live  (live is blocked until broker is wired)
+app:
+  name: "Groww Algo"
+  version: "4.0"
+  timezone: "Asia/Kolkata"
+  mode: "paper"
+  environment: "production"
+
+# ------------------------------------------------------------
+# 1. TRADING ENGINE
+# ------------------------------------------------------------
 
 engine:
-  enabled: true                  # auto-start the scan/trade loop with the API
-  autotrade: true                # false = keep scanning/signalling but never open a paper trade
-  scan_interval_sec: 300         # full market scan every 5 minutes
-  quote_refresh_sec: 20          # position mark-to-market refresh
-  entry_window: ["09:20", "14:45"]
-  square_off: "15:20"
-  timezone: "Asia/Kolkata"
-  # auto = Groww first, Yahoo only if Groww refuses. groww = never fall back.
-  data_source: auto
-  # Optional NSE holidays (YYYY-MM-DD). Weekends are always skipped.
-  holidays: []
+  enabled: true
+  auto_trade: true
+  execution_mode: "paper"
+
+  scan_interval_seconds: 60
+  quote_refresh_seconds: 5
+
+  entry_start_time: "09:25"
+  entry_end_time: "14:45"
+  square_off_time: "15:20"
+
+  trading_days:
+    - Monday
+    - Tuesday
+    - Wednesday
+    - Thursday
+    - Friday
+
+  allow_new_entries: true
+  allow_long: true
+  allow_short: true
+
+  candle_confirmation: true
+  use_closed_candles_only: true
+  required_confirmations: 5
+
+# ------------------------------------------------------------
+# 2. DATA SOURCES
+# ------------------------------------------------------------
+
+data:
+  primary_source: "groww"
+  secondary_source: "yahoo_finance"
+  source_mode: "auto"
+
+  groww:
+    enabled: true
+    priority: 1
+    use_for_quotes: true
+    use_for_entry_confirmation: true
+    use_for_execution_price: true
+
+  yahoo_finance:
+    enabled: true
+    priority: 2
+    use_for_scanning: true
+    use_for_entry_confirmation: false
+    use_for_execution_price: false
+
+  fallback:
+    enabled: true
+    on_timeout: true
+    on_error: true
+    on_empty_data: true
+    on_invalid_data: true
+
+    yahoo_allowed_for_scanning: true
+    groww_confirmation_required: true
+
+  validation:
+    max_quote_age_seconds: 10
+    reject_stale_data: true
+    reject_missing_ohlcv: true
+    reject_invalid_prices: true
+    reject_zero_volume: true
+    reject_duplicate_candles: true
+
+# ------------------------------------------------------------
+# 3. ACCOUNT AND CAPITAL MANAGEMENT
+# ------------------------------------------------------------
 
 account:
-  starting_capital: 10000        # Rs. 10,000 (matches your Groww intraday plan)
+  initial_capital: 1000
+  currency: "INR"
+
   max_positions: 2
-  risk_per_trade: 100            # Rs. risked per trade (stop-distance sizing)
-  max_daily_loss: 200            # stop opening new trades after this loss
-  max_position_pct: 45           # max % of equity in one name
+  max_position_pct: 40
+  reserve_capital_pct: 20
+
+  risk_per_trade: 10
+  risk_per_trade_pct: 1.0
+
+  max_daily_loss: 30
+  max_daily_loss_pct: 3.0
+
+  max_trades_per_day: 4
+  max_trades_per_symbol_per_day: 1
+
+  minimum_order_value: 100
+  allow_fractional_quantity: false
+
+  position_sizing:
+    method: "risk_based"
+    use_stop_distance: true
+    enforce_capital_limit: true
+    enforce_position_limit: true
+    enforce_daily_risk_limit: true
+    round_quantity_down: true
+
+  martingale: false
+  averaging_down: false
+  averaging_up: false
+  pyramiding: false
+
+# ------------------------------------------------------------
+# 4. TRADING COSTS
+# ------------------------------------------------------------
 
 costs:
-  brokerage_per_order: 20        # Rs. cap per executed order
-  brokerage_pct: 0.03            # Groww intraday equity: 0.03% of turnover or the cap, whichever is lower
-  exchange_txn_pct: 0.00297      # NSE transaction charge
-  sebi_pct: 0.0001               # SEBI turnover fee (Rs. 10 per crore)
-  stamp_buy_pct: 0.003           # stamp duty, buy side only
-  gst_pct: 18                    # GST on brokerage + exchange + SEBI
-  slippage_pct: 0.05             # adverse fill per side (%)
-  stt_sell_pct: 0.025            # STT on sell side (%)
+  brokerage:
+    per_order: 20
+    percentage: 0.10
+    calculation: "min(turnover * percentage / 100, per_order)"
+
+  exchange_transaction_charge_pct: 0.00297
+  sebi_charge_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  gst_pct: 18
+  slippage_pct: 0.05
+  stt_sell_pct: 0.025
+
+  ipft_enabled: true
+
+  include_costs_in_risk_reward: true
+  include_costs_in_position_sizing: true
+  simulate_all_charges: true
+
+# ------------------------------------------------------------
+# 5. STOCK UNIVERSE
+# ------------------------------------------------------------
 
 universe:
-  file: config/nifty500.txt
+  source: "NIFTY500"
+  symbols_file: "config/nifty500_symbols.txt"
+
   max_symbols: 140
-  min_price: 30
-  min_avg_daily_value: 20000000  # Rs. 2 crore average daily turnover
-  exclude: []                    # e.g. ["YESBANK", "IDEA"]
 
-scan:
-  max_results: 200               # rows returned to the dashboard (all ranks, 0 = all)
+  filters:
+    minimum_price: 30
+    minimum_average_daily_value: 20000000
 
-# --- Entry rules -----------------------------------------------------------
+    exclude_sme: true
+    exclude_etf: true
+    exclude_suspended: true
+    exclude_t2t: true
+    exclude_illiquid: true
+
+  scanner:
+    enabled: true
+    max_candidates: 200
+    rank_by_score: true
+
+# ------------------------------------------------------------
+# 6. TIMEFRAMES AND INDICATORS
+# ------------------------------------------------------------
+
+indicators:
+  execution_timeframe: "5m"
+  trend_timeframe: "15m"
+  context_timeframe: "1d"
+
+  ema:
+    enabled: true
+    periods: [20, 50, 200]
+
+  rsi:
+    enabled: true
+    period: 14
+
+  macd:
+    enabled: true
+    fast: 12
+    slow: 26
+    signal: 9
+
+  adx:
+    enabled: true
+    period: 14
+
+  atr:
+    enabled: true
+    period: 14
+
+  vwap:
+    enabled: true
+
+  volume:
+    enabled: true
+    lookback: 20
+
+  breakout:
+    enabled: true
+    lookback: 20
+
+# ------------------------------------------------------------
+# 7. MARKET AND SECTOR FILTER
+# ------------------------------------------------------------
+
+market_filter:
+  enabled: true
+  benchmark: "NIFTY50"
+
+  use_market_direction: true
+  use_sector_strength: true
+
+  long:
+    require_bullish_market: true
+    require_sector_relative_strength: true
+
+  short:
+    require_bearish_market: true
+    require_sector_relative_weakness: true
+
+  reject_if_market_data_missing: true
+
+# ------------------------------------------------------------
+# 8. LONG ENTRY CONDITIONS - BUY
+# ------------------------------------------------------------
+
 entry:
-  min_score: 65                  # 0-100 composite score required
-  min_confirmations: 3           # how many factor buckets must score > 50
-  require_trend: true            # price must be above EMA20 and EMA50
-  require_above_vwap: true       # intraday longs only above VWAP
-  breakout_lookback: 20          # bars used for breakout high
-  min_relative_volume: 1.4       # volume vs 20-bar average
-  max_vwap_extension_pct: 2.5    # don't chase more than this % above VWAP
-  avoid_first_minutes: 5         # skip the opening noise
-  min_atr_pct: 0.4               # stock must actually move
-  max_atr_pct: 3.5               # ...but not be chaos
-  min_risk_reward: 1.8           # reject setups whose target/stop is worse
+  enabled: true
+  direction: "long"
 
-# --- Exit rules ------------------------------------------------------------
-exit:
-  stop_atr_mult: 1.2             # initial stop = entry - 1.2 * ATR
-  target_r_mult: 2.0             # first target = entry + 2R
-  trailing_atr_mult: 0.8         # trailing stop once trade is +1R
-  trail_after_r: 1.0
-  time_stop_minutes: 180         # force exit after 3 hours
-  move_stop_to_be_at_r: 0.8      # move stop to break-even at +0.8R
-  square_off: "15:20"            # hard MIS square-off
+  minimum_score: 85
+  min_risk_reward: 2.0
+  required_confirmations: 5
 
-# --- Composite scoring weights (must total 100) ----------------------------
+  trend:
+    ema_alignment: true
+    condition: "EMA20 > EMA50 > EMA200"
+    require_5m_confirmation: true
+    require_15m_confirmation: true
+    price_above_vwap: true
+
+  momentum:
+    rsi_min: 55
+    rsi_max: 72
+    adx_min: 20
+    macd_bullish: true
+
+  volume:
+    relative_volume_min: 1.5
+    use_time_of_day_average: true
+    require_volume_confirmation: true
+
+  price_action:
+    require_breakout_or_retest: true
+    breakout_lookback: 20
+    require_bullish_candle: true
+    use_closed_candle: true
+
+  volatility:
+    minimum_atr_pct: 0.4
+    maximum_atr_pct: 3.5
+
+  quality:
+    require_liquidity: true
+    require_acceptable_spread: true
+    require_relative_strength: true
+
+  risk:
+    minimum_risk_reward: 2.0
+    include_trading_costs: true
+
+# ------------------------------------------------------------
+# 9. SHORT ENTRY CONDITIONS - SELL
+# ------------------------------------------------------------
+
+short_entry:
+  enabled: true
+  direction: "short"
+
+  minimum_score: 85
+  min_risk_reward: 2.0
+  required_confirmations: 5
+
+  trend:
+    ema_alignment: true
+    condition: "EMA20 < EMA50 < EMA200"
+    require_5m_confirmation: true
+    require_15m_confirmation: true
+    price_below_vwap: true
+
+  momentum:
+    rsi_min: 28
+    rsi_max: 45
+    adx_min: 20
+    macd_bearish: true
+
+  volume:
+    relative_volume_min: 1.5
+    use_time_of_day_average: true
+    require_volume_confirmation: true
+
+  price_action:
+    require_breakdown_or_retest: true
+    breakdown_lookback: 20
+    require_bearish_candle: true
+    use_closed_candle: true
+
+  volatility:
+    minimum_atr_pct: 0.4
+    maximum_atr_pct: 3.5
+
+  quality:
+    require_liquidity: true
+    require_acceptable_spread: true
+    require_relative_weakness: true
+
+  risk:
+    minimum_risk_reward: 2.0
+    include_trading_costs: true
+
+# ------------------------------------------------------------
+# 10. 100-POINT SCORING SYSTEM
+# ------------------------------------------------------------
+
 scoring:
+  enabled: true
+  maximum_score: 100
+  normalize_score: false
+
+  minimum_trade_score: 85
+
+  thresholds:
+    ignore: 50
+    watchlist: 50
+    qualified: 65
+    strong: 75
+    entry: 85
+    excellent: 90
+    exceptional: 95
+
   weights:
     trend: 22
-    momentum: 20
-    pattern: 20
-    volume: 13
-    quality: 15
-    risk: 10
-  qualified_score: 65
-  watchlist_score: 55
+    momentum: 16
+    price_pattern: 16
+    volume: 14
+    market_sector: 12
+    stock_quality: 10
+    risk_quality: 10
 
-# --- Fundamentals (optional enrichment for the quality bucket) -------------
+  categories:
+
+    trend:
+      weight: 22
+      ema_alignment: 8
+      multi_timeframe_confirmation: 6
+      vwap_position: 4
+      price_structure: 4
+
+    momentum:
+      weight: 16
+      rsi_strength: 5
+      macd_confirmation: 4
+      adx_strength: 4
+      momentum_acceleration: 3
+
+    price_pattern:
+      weight: 16
+      breakout_or_breakdown: 8
+      candle_confirmation: 4
+      retest_quality: 4
+
+    volume:
+      weight: 14
+      relative_volume: 8
+      time_of_day_volume: 4
+      volume_trend: 2
+
+    market_sector:
+      weight: 12
+      nifty_direction: 6
+      sector_relative_strength: 6
+
+    stock_quality:
+      weight: 10
+      liquidity: 4
+      spread_quality: 3
+      stock_relative_strength: 3
+
+    risk_quality:
+      weight: 10
+      risk_reward_quality: 6
+      atr_suitability: 4
+
+  rules:
+    require_all_mandatory_gates: true
+    cap_category_score_at_weight: true
+    reject_missing_indicators: true
+    no_double_counting: true
+    separate_long_short_scoring: true
+    reject_score_below_minimum: true
+
+  mandatory_gates:
+    trend: true
+    momentum: true
+    volume: true
+    price_pattern: true
+    market_filter: true
+    risk_reward: true
+    groww_confirmation: true
+
+# ------------------------------------------------------------
+# 11. VOLUME CONFIRMATION
+# ------------------------------------------------------------
+
+volume_filter:
+  enabled: true
+  lookback_period: 20
+
+  relative_volume:
+    enabled: true
+    minimum: 1.5
+
+  time_of_day_average:
+    enabled: true
+
+  require_volume_increase: true
+  reject_low_volume_breakouts: true
+
+# ------------------------------------------------------------
+# 12. STOP LOSS AND TAKE PROFIT
+# ------------------------------------------------------------
+
+exit:
+  enabled: true
+
+  initial_stop_loss:
+    method: "atr"
+    atr_multiplier: 1.2
+    minimum_stop_pct: 0.4
+    maximum_stop_pct: 2.0
+    use_market_structure: true
+    never_widen_stop: true
+
+  target:
+    enabled: true
+    target_r_mult: 2.0
+    minimum_risk_reward: 2.0
+    include_costs: true
+
+  breakeven:
+    enabled: true
+    activate_at_r: 1.0
+    include_costs: true
+    move_stop_to_entry_plus_costs: true
+
+  trailing_stop:
+    enabled: true
+    method: "atr_and_profit_lock"
+    activate_at_r: 1.0
+    use_highest_price_since_entry_for_long: true
+    use_lowest_price_since_entry_for_short: true
+    never_move_backwards: true
+
+    profit_lock_levels:
+      - profit_at_r: 1.0
+        lock_profit_r: 0.0
+        atr_multiplier: 2.0
+
+      - profit_at_r: 1.5
+        lock_profit_r: 0.5
+        atr_multiplier: 1.75
+
+      - profit_at_r: 2.0
+        lock_profit_r: 1.0
+        atr_multiplier: 1.5
+
+      - profit_at_r: 2.5
+        lock_profit_r: 1.5
+        atr_multiplier: 1.25
+
+      - profit_at_r: 3.0
+        lock_profit_r: 2.0
+        atr_multiplier: 1.0
+
+      - profit_at_r: 4.0
+        lock_profit_r: 3.0
+        atr_multiplier: 0.8
+
+    long_stop_formula:
+      - "highest_price_since_entry - ATR * active_multiplier"
+      - "entry_price + initial_risk * locked_profit_r"
+      - "new_stop = max(previous_stop, both_calculated_stops)"
+
+    short_stop_formula:
+      - "lowest_price_since_entry + ATR * active_multiplier"
+      - "entry_price - initial_risk * locked_profit_r"
+      - "new_stop = min(previous_stop, both_calculated_stops)"
+
+  time_stop:
+    enabled: true
+    maximum_holding_minutes: 180
+
+  square_off:
+    enabled: true
+    time: "15:20"
+    close_all_positions: true
+
+  overnight:
+    enabled: false
+
+# ------------------------------------------------------------
+# 13. RISK MANAGEMENT
+# ------------------------------------------------------------
+
+risk:
+  enabled: true
+
+  minimum_risk_reward: 2.0
+  preferred_risk_reward: 2.0
+
+  risk_per_trade: 10
+  maximum_daily_loss: 30
+  maximum_open_positions: 2
+
+  maximum_trades_per_day: 4
+  maximum_trades_per_symbol: 1
+
+  cooldown:
+    after_loss_minutes: 15
+    after_two_consecutive_losses_minutes: 45
+
+  consecutive_losses:
+    maximum: 3
+    stop_trading_after_limit: true
+
+  position_sizing:
+    method: "stop_distance_based"
+    include_costs: true
+    respect_available_capital: true
+    respect_max_position_pct: true
+    round_quantity_down: true
+
+  protection:
+    reject_trade_if_risk_exceeded: true
+    reject_trade_if_capital_insufficient: true
+    reject_trade_if_rr_below_minimum: true
+    reject_trade_if_stop_invalid: true
+    prevent_duplicate_entries: true
+
+  martingale: false
+  revenge_trading: false
+  averaging_down: false
+
+# ------------------------------------------------------------
+# 14. FUNDAMENTAL DATA
+# ------------------------------------------------------------
+
 fundamentals:
   enabled: true
-  source: yfinance               # Groww has no fundamentals; yfinance is free
-  refresh_hours: 24
+  source: "yfinance"
+
+  refresh_interval_hours: 24
+  blocking: false
+
+  use_for:
+    - stock_quality
+    - basic_company_filter
+
+  block_entry_if_unavailable: false
+
+# ------------------------------------------------------------
+# 15. PAPER EXECUTION
+# ------------------------------------------------------------
+
+execution:
+  mode: "paper"
+
+  simulate_orders: true
+  simulate_market_orders: true
+  simulate_limit_orders: true
+  simulate_slippage: true
+  simulate_brokerage: true
+  simulate_taxes: true
+
+  partial_fills:
+    enabled: true
+    simulate: true
+
+  order_validation:
+    check_quantity: true
+    check_available_capital: true
+    check_price: true
+    check_trading_hours: true
+
+  live_trading:
+    enabled: false
+    allow_live_orders: false
+    block_live_mode: true
+    prevent_real_orders: true
+    reject_live_broker_requests: true
+
+# ------------------------------------------------------------
+# 16. BACKTESTING
+# ------------------------------------------------------------
+
+backtesting:
+  enabled: true
+
+  timeframe: "5m"
+  use_historical_ohlcv: true
+
+  include_brokerage: true
+  include_taxes: true
+  include_slippage: true
+
+  prevent_lookahead_bias: true
+  prevent_survivorship_bias: true
+
+  out_of_sample_testing: true
+  walk_forward_testing: true
+
+  metrics:
+    - total_return
+    - net_profit
+    - win_rate
+    - profit_factor
+    - maximum_drawdown
+    - average_risk_reward
+    - expectancy
+    - sharpe_ratio
+    - average_holding_time
+    - total_trades
+
+# ------------------------------------------------------------
+# 17. LOGGING AND PERFORMANCE
+# ------------------------------------------------------------
+
+logging:
+  enabled: true
+  level: "INFO"
+
+  log_scans: true
+  log_candidates: true
+  log_scores: true
+  log_entry_rejections: true
+  log_orders: true
+  log_exits: true
+  log_stop_loss_changes: true
+  log_trading_costs: true
+
+  save_trade_history: true
+  save_daily_reports: true
+
+performance:
+  enabled: true
+
+  calculate:
+    - win_rate
+    - loss_rate
+    - net_profit
+    - gross_profit
+    - gross_loss
+    - profit_factor
+    - average_win
+    - average_loss
+    - maximum_drawdown
+    - expectancy
+    - risk_reward_ratio
+
+# ------------------------------------------------------------
+# 18. SAFETY CONTROLS
+# ------------------------------------------------------------
+
+safety:
+  paper_trading_only: true
+  live_trading_disabled: true
+  real_order_placement_disabled: true
+
+  reject_invalid_market_data: true
+  reject_stale_market_data: true
+
+  enforce_daily_loss_limit: true
+  enforce_position_limit: true
+  enforce_trade_limit: true
+
+  prevent_overnight_positions: true
+  prevent_duplicate_orders: true
+
+  stop_engine_on_critical_error: true
+
+# ============================================================
+# END OF GROWW ALGO V4 CONFIGURATION
+# ============================================================

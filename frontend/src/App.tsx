@@ -249,7 +249,9 @@ export default function App() {
               <div>
                 <h1>Overview</h1>
                 <p>
-                  Paper intraday desk · {status?.config?.universe_size ?? 0} symbols scanned ·{' '}
+                  Paper intraday desk · V{status?.config?.version ?? '4.0'} · min score{' '}
+                  {status?.config?.min_score ?? 85} · {status?.config?.required_confirmations ?? 5}{' '}
+                  confirmations · {status?.config?.universe_size ?? 0} symbols scanned ·{' '}
                   {status?.mode?.toUpperCase() ?? 'PAPER'} mode
                 </p>
               </div>

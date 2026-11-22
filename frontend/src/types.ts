@@ -37,6 +37,10 @@ export interface ScanRow {
   reasons: string[]
   atr?: number | null
   fundamentals?: Record<string, unknown> | null
+  data_source?: string
+  delayed?: boolean
+  data_stale?: boolean
+  closed_candle?: boolean
 }
 
 export interface ChartCandle {
@@ -254,12 +258,19 @@ export interface Status {
   last_error: string | null
   config: {
     mode: string
+    version?: string
+    strategy?: string
+    execution_mode?: string
     capital: number
     risk_per_trade: number
     max_positions: number
     max_daily_loss: number
     min_score: number
+    required_confirmations?: number
+    target_r_mult?: number
     scan_interval_sec: number
+    autotrade?: boolean
+    data_source?: string
     universe_size: number
   }
 }

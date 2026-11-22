@@ -963,6 +963,47 @@ class EvolutionQATests(ScratchDBTest):
                     if value is not None:
                         self.assertGreaterEqual(float(value), 2.0)
 
+    def test_failed_validation_stays_rejected_not_shadow(self):
+        store = _MemoryStore()
+        engine = evolution_module.StrategyEvolutionEngine(store=store)
+        changed = {"exit.target.target_r_mult": 2.2}
+        candidate = {
+            "text": BASE_TEXT,
+            "path": "exit.target.target_r_mult",
+            "value": 2.2,
+            "changed": changed,
+            "overrides": {"exit": {"target": {"target_r_mult": 2.2}}},
+            "params": {"changed": changed, "base": {}, "deterministic": True},
+        }
+        ev = {
+            "research_enabled": True,
+            "candidate_count": 1,
+            "shadow_sessions": 5,
+            "min_oos_return_pct": 0.5,
+            "min_walk_forward_efficiency": 0.6,
+            "max_drawdown_pct": 10.0,
+        }
+        with patch.object(evolution_module.config, "evolution", return_value=ev), \
+             patch.object(engine, "ensure_baseline", return_value=None), \
+             patch.object(engine, "_symbols", return_value=["TEST"]), \
+             patch.object(evolution_module, "load_active_yaml", return_value=BASE_TEXT), \
+             patch.object(engine, "_generate_candidates", return_value=[candidate]), \
+             patch.object(engine, "_validate_candidate", return_value={
+                 "validation_passed": False,
+                 "validation_reasons": ["no out-of-sample trades"],
+             }), \
+             patch.object(engine, "_promote_ready", return_value={
+                 "status": "auto_promote_disabled", "promoted": [], "awaiting": [],
+             }):
+            result = engine.run_once()
+
+        self.assertEqual(result["counts"]["rejected"], 1)
+        self.assertEqual(result["counts"]["shadow"], 0)
+        rows = store.versions(limit=10)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["status"], "rejected")
+        self.assertFalse(rows[0]["metrics"]["validation_passed"])
+
     def test_rollback_restores_previous_version_without_writing_config(self):
         store = _MemoryStore()
         v1 = StrategyVersion(

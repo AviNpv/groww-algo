@@ -313,7 +313,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
 
 - `.\\.venv\\Scripts\\python.exe -m compileall -q engine tests scripts` → exit 0.
 - `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v` →
-  **Ran 72 tests ... OK** (72 passed, 0 failed, 0 errors, 0 expected failures,
+  **Ran 73 tests ... OK** (73 passed, 0 failed, 0 errors, 0 expected failures,
   0 skipped).
 - `npm run build` → `index-BQqRuSyT.js` (314,583 bytes) and
   `index-CRPZR5UK.css` (24,147 bytes); `dist/index.html` references both, the
@@ -321,7 +321,7 @@ flag and that a non-boolean flag is rejected. Final local verification:
   and contains no `127.0.0.1:8010` string.
 
 The earlier 65-test counts and asset hashes remain historical evidence from the
-independent re-verification above. Current verdict: **PASS**, 72/72.
+independent re-verification above. Current verdict: **PASS**, 73/73.
 
 ### Fresh-store initialization addendum (2026-11-22)
 
@@ -358,7 +358,7 @@ this key. `ModelAdapter._headers()` now identifies the client explicitly, and
 the health probe sends a JSON-only system/user message pair plus
 `response_format: {"type": "json_object"}`. Added a model-pinned contract test
 and a health-probe request-shape test. Final verification: `compileall` exit 0
-and full discovery suite **72 tests, OK**.
+and full discovery suite **73 tests, OK**.
 
 ### Mode-switch scheduler sync (2026-11-22)
 
@@ -376,4 +376,17 @@ reported `running=false` while the real thread was running. `scheduler.py` now
 owns one process-wide instance via `get_scheduler()` / `stop_scheduler()`, used
 by startup, the mode switch and status. Added
 `test_mode_sync_starts_and_stops_research_scheduler`. Final verification:
-`compileall` exit 0 and full discovery suite **72 tests, OK**.
+`compileall` exit 0 and full discovery suite **73 tests, OK**.
+
+### Failed validation cannot enter shadow (2026-11-22)
+
+The first production research run produced versions with
+`validation_passed: false` but status `shadow`. `StrategyEvolutionEngine.run_once()`
+unconditionally advanced every candidate through `validated` to `shadow`, even
+when backtests reported zero trades and failed all promotion thresholds. It now
+stores failed validation results as `rejected` and increments `rejected`; only
+versions with `validation_passed: true` enter the shadow queue. Promotion already
+rejected versions without successful validation, so no invalid config was ever
+installed, but the status label was misleading. Added
+`test_failed_validation_stays_rejected_not_shadow`. Final verification:
+`compileall` exit 0 and full discovery suite **73 tests, OK**.

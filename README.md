@@ -349,7 +349,7 @@ paper sessions.
 cd frontend && npm run build
 ```
 
-Latest local run: **72 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+Latest local run: **73 tests passed, 0 failed, 0 expected failures, 0 skipped**.
 The production bundle is committed under `frontend/dist/` with
 `index-BQqRuSyT.js` and `index-CRPZR5UK.css`; `dist/index.html` references those
 files and the bundle targets `https://groww-algo.onrender.com` (no local port).

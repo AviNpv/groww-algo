@@ -811,8 +811,15 @@ class StrategyEvolutionEngine:
                     metrics["changed"] = candidate["changed"]
                     metrics["shadow_sessions_completed"] = 0
                     metrics["shadow_sessions_required"] = int(ev.get("shadow_sessions", 5) or 5)
-                    version.status = "validated"
                     version.metrics = metrics
+                    if not metrics.get("validation_passed"):
+                        # Never let a failed backtest/walk-forward result enter
+                        # the shadow queue. It stays visible as rejected evidence.
+                        version.status = "rejected"
+                        self._save(version)
+                        counts["rejected"] += 1
+                        continue
+                    version.status = "validated"
                     self._save(version)
                     counts["validated"] += 1
                     version.status = "shadow"

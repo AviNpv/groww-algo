@@ -11,7 +11,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -59,6 +59,10 @@ class ConfigValue(BaseModel):
     section: str
     key: str
     value: float | int | bool | str
+
+
+class IntelligenceModeRequest(BaseModel):
+    enabled: bool
 
 
 class ResetRequest(BaseModel):
@@ -647,6 +651,10 @@ def _validate_time(value, label: str) -> None:
 def _validate_intelligence_config(data: dict) -> None:
     """Block credential redirection through the writable strategy editor."""
     block = data.get("intelligence")
+    if isinstance(block, dict):
+        for key in ("enabled", "require_for_entries", "fail_closed", "paper_only"):
+            if key in block and not isinstance(block[key], bool):
+                raise HTTPException(status_code=400, detail=f"intelligence.{key} must be a boolean")
     model = block.get("model") if isinstance(block, dict) else None
     if not isinstance(model, dict):
         return
@@ -842,6 +850,52 @@ def config_value(req: ConfigValue) -> dict:
         "config": load_config(force=True),
         "yaml": updated,
         "message": f"{req.section}.{req.key} = {req.value}",
+    }
+
+
+@app.post("/api/intelligence/mode")
+def intelligence_mode(req: IntelligenceModeRequest, request: Request) -> dict:
+    """Switch between the normal deterministic engine and the AI advisory layer.
+
+    This is a single operator-controlled boolean. It is open when no admin token
+    is configured (the same trust boundary as the existing Settings editor), and
+    automatically admin-gated once INTELLIGENCE_ADMIN_TOKEN is set. It never
+    touches risk limits, execution permissions, model credentials or the paper-only
+    flags, and both strategy YAML files are fully validated before writing.
+    """
+    token = os.environ.get("INTELLIGENCE_ADMIN_TOKEN") or ""
+    if token:
+        from engine.intelligence.api import _require_admin
+        _require_admin(request)
+
+    active_text = _set_scalar(
+        CONFIG_PATH.read_text(encoding="utf-8"), "intelligence", "enabled", req.enabled,
+    )
+    _validate_strategy(active_text)
+
+    default_path = CONFIG_DIR / "strategy.default.yaml"
+    default_text = None
+    if default_path.exists():
+        default_text = _set_scalar(
+            default_path.read_text(encoding="utf-8"), "intelligence", "enabled", req.enabled,
+        )
+        _validate_strategy(default_text)
+
+    _write_strategy(active_text)
+    if default_text is not None:
+        tmp = default_path.with_suffix(".yaml.tmp")
+        tmp.write_text(default_text, encoding="utf-8")
+        os.replace(tmp, default_path)
+
+    load_config(force=True)
+    mode = "AI" if req.enabled else "NORMAL"
+    return {
+        "ok": True,
+        "enabled": bool(req.enabled),
+        "mode": mode,
+        "config": load_config(force=True),
+        "yaml": CONFIG_PATH.read_text(encoding="utf-8"),
+        "message": f"{mode} mode active; the next scan uses this setting.",
     }
 
 

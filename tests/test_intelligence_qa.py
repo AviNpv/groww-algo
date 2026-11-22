@@ -1237,5 +1237,24 @@ class FrontendBuildQATests(unittest.TestCase):
                 self.assertGreater(path.stat().st_size, 0, f"empty file: {path}")
 
 
+class ModeSwitchQATests(unittest.TestCase):
+    def test_mode_switch_changes_only_enabled_flag(self):
+        text = (REPO / "config" / "strategy.yaml").read_text(encoding="utf-8")
+        normal = engine_api._set_scalar(text, "intelligence", "enabled", False)
+        ai = engine_api._set_scalar(text, "intelligence", "enabled", True)
+        engine_api._validate_strategy(normal)
+        engine_api._validate_strategy(ai)
+        normal_data = yaml.safe_load(normal)
+        ai_data = yaml.safe_load(ai)
+        self.assertIs(normal_data["intelligence"]["enabled"], False)
+        self.assertIs(ai_data["intelligence"]["enabled"], True)
+        normal_data["intelligence"]["enabled"] = ai_data["intelligence"]["enabled"]
+        self.assertEqual(normal_data, ai_data)
+
+    def test_mode_flag_must_be_boolean(self):
+        with self.assertRaises(HTTPException):
+            engine_api._validate_intelligence_config({"intelligence": {"enabled": "yes"}})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -299,3 +299,26 @@ type-only messages (`engine/engine.py`, `engine/intelligence/orchestrator.py`,
 `engine/intelligence/agents.py`) to remove any residual chance of persisting raw
 exception text. `compileall` and the full 65-test discovery suite were re-run and
 passed again. No contracts, gates, config values or response shapes changed.
+
+### Mode-switch addendum (2026-11-22)
+
+A Normal/AI mode switch was added to the Intelligence dashboard and backed by
+`POST /api/intelligence/mode`. It flips only `intelligence.enabled`, validates the
+resulting YAML, writes both strategy files atomically, and reloads config. If
+`INTELLIGENCE_ADMIN_TOKEN` is configured the endpoint requires it; otherwise it
+uses the same operator trust boundary as the existing Settings editor.
+
+New tests in `ModeSwitchQATests` prove that the toggle changes only the enabled
+flag and that a non-boolean flag is rejected. Final local verification:
+
+- `.\\.venv\\Scripts\\python.exe -m compileall -q engine tests scripts` → exit 0.
+- `.\\.venv\\Scripts\\python.exe -m unittest discover -s tests -v` →
+  **Ran 67 tests ... OK** (67 passed, 0 failed, 0 errors, 0 expected failures,
+  0 skipped).
+- `npm run build` → `index-BQqRuSyT.js` (314,583 bytes) and
+  `index-CRPZR5UK.css` (24,147 bytes); `dist/index.html` references both, the
+  bundle contains `https://groww-algo.onrender.com` and `/api/intelligence/mode`,
+  and contains no `127.0.0.1:8010` string.
+
+The earlier 65-test counts and asset hashes remain historical evidence from the
+independent re-verification above. Current verdict: **PASS**, 67/67.

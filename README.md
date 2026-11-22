@@ -208,6 +208,24 @@ deterministic scanner/broker path is unchanged. When enabled:
 6. All evidence is written to `data/intelligence.sqlite`, never to the trading
    ledger. There is no order endpoint in the intelligence router.
 
+#### Normal / AI mode switch
+
+The **Intelligence → Trading mode** card has two buttons:
+
+- **Normal** — `intelligence.enabled: false`. The original deterministic scanner,
+  scoring, risk gates and paper broker handle everything exactly as before.
+- **AI-assisted** — `intelligence.enabled: true`. The six advisory agents review
+  new entries before the paper buy. If the model or evidence is unavailable, the
+  new entry is rejected; existing positions are still managed deterministically.
+
+Both modes are paper-only and neither changes capital, risk limits, execution
+permissions or square-off rules. The switch writes the same single boolean to
+`config/strategy.yaml` and `config/strategy.default.yaml` after full validation,
+so the next scan picks it up without a restart. If `INTELLIGENCE_ADMIN_TOKEN` is
+configured, the switch requires the token from the Operator token field; when it
+is unset, the switch uses the same existing operator trust boundary as the
+Settings editor, so restrict dashboard access to trusted users.
+
 #### Model setup
 
 The default provider is a free OpenAI-compatible endpoint:
@@ -318,9 +336,9 @@ paper sessions.
 cd frontend && npm run build
 ```
 
-Latest local run: **65 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+Latest local run: **67 tests passed, 0 failed, 0 expected failures, 0 skipped**.
 The production bundle is committed under `frontend/dist/` with
-`index-C-JosjnT.js` and `index-8SWTpTb3.css`; `dist/index.html` references those
+`index-BQqRuSyT.js` and `index-CRPZR5UK.css`; `dist/index.html` references those
 files and the bundle targets `https://groww-algo.onrender.com` (no local port).
 
 Final local HTTP smoke (127.0.0.1:8010, with a throwaway admin token) returned
@@ -331,7 +349,10 @@ token or a wrong token; with the valid token, promote/rollback reached route
 logic (404 for a missing version, 400 for an invalid version ID) without
 changing `strategy.yaml`. The authenticated `evolution/run` call was not
 awaited because the local research job runs multi-symbol backtests; its admin
-gate was verified by the 401 cases and code review.
+gate was verified by the 401 cases and code review. The Normal/AI mode switch
+was exercised in both configurations: with no admin token it returned 200 and
+flipped both YAML files to AI then back to Normal; with a token configured it
+returned 401 without/wrong token and 200 with the valid token.
 
 Independent evidence:
 

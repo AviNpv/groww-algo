@@ -68,11 +68,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-/** Strategy-changing intelligence endpoints require an operator token. */
-function adminPost(path: string, token: string): Promise<IntelligenceActionResult> {
+/** Strategy-changing intelligence endpoints use the operator token when one is configured. */
+function adminPost(path: string, token: string, body?: unknown): Promise<IntelligenceActionResult> {
   return request<IntelligenceActionResult>(path, {
     method: 'POST',
     headers: token ? { 'X-Intelligence-Token': token } : {},
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 }
 
@@ -155,6 +156,8 @@ export const api = {
     request<IntelligenceList<IntelligenceExecutionRow>>(`/intelligence/executions?limit=${limit}`),
   intelligenceVersions: (limit = 30) =>
     request<IntelligenceList<IntelligenceVersionRow>>(`/intelligence/versions?limit=${limit}`),
+  setIntelligenceMode: (enabled: boolean, token = '') =>
+    adminPost('/intelligence/mode', token, { enabled }),
   runEvolution: (token = '') => adminPost('/intelligence/evolution/run', token),
   promoteStrategy: (versionId: string, token = '') =>
     adminPost(`/intelligence/strategy/${encodeURIComponent(versionId)}/promote`, token),

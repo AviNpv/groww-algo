@@ -945,6 +945,18 @@ pre.yaml {
   color: var(--text); font: inherit; font-weight: 700; text-align: left;
 }
 .intel-link:hover { color: var(--yellow); }
+.mode-switch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mode-option {
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+  gap: 4px; padding: 11px 13px; min-height: 74px; white-space: normal;
+}
+.mode-option strong { font-size: 13px; }
+.mode-option span { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.mode-option.primary span { color: rgba(18, 22, 28, 0.78); }
+.mode-note { padding-top: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+@media (max-width: 700px) {
+  .mode-switch { grid-template-columns: minmax(0, 1fr); }
+}
 .intel-reports { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
 .intel-report {
   background: var(--bg-soft); border: 1px solid var(--border);

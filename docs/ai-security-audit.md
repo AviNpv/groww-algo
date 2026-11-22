@@ -269,3 +269,31 @@ All three prior blockers (B-01/B-02/B-03), all three QA bugs, and the fail-close
 ### Post-review addendum — error-detail tightening
 
 After this re-audit, three remaining error-detail strings were reduced to exception-type-only messages in `engine/engine.py`, `engine/intelligence/orchestrator.py` and `engine/intelligence/agents.py`, so no raw exception text can be persisted in evidence or returned in a decision rationale. `compileall` and the full 65-test discovery suite were re-run and passed again. No contract, gate, config value or response shape changed; the PASS WITH CONDITIONS verdict is unchanged.
+
+### Mode-switch addendum (2026-11-22)
+
+A new `POST /api/intelligence/mode` endpoint serves the dashboard Normal/AI
+switch. Security review of the current implementation:
+
+- It changes exactly one boolean (`intelligence.enabled`) in both strategy YAML
+  files. `_set_scalar()` preserves all other content and `_validate_strategy()`
+  performs the full safety validation before either file is written. Tests prove
+  no other YAML value changes.
+- It cannot change `app.mode`, execution mode, live-order flags, safety kill
+  switches, capital, risk, exposure limits, model credentials, `base_url` or
+  `api_key_env`. Those remain covered by the existing absolute and write-time
+  validators.
+- When `INTELLIGENCE_ADMIN_TOKEN` is configured, the endpoint calls the same
+  constant-time `_require_admin()` gate as evolution/promote/rollback. When it is
+  unset (the current Render state), the switch is open, matching the pre-existing
+  unauthenticated Settings editor. This is an operator UI function, not an agent
+  capability; network access must still be restricted to trusted operators.
+- Enabling AI does not bypass fail-closed behavior: missing model health or an
+  orchestration/rule/debate failure rejects new entries. Disabling AI restores
+  the original deterministic path immediately.
+
+Final local verification after this addendum: `compileall` exit 0; full discovery
+suite **67 tests, OK**, including the two new mode-switch tests. No deployment,
+broker or live-trading action was performed by this review. The earlier
+**PASS WITH CONDITIONS** verdict remains valid with the existing network-access
+condition.

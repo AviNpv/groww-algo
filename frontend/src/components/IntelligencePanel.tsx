@@ -248,6 +248,12 @@ export default function IntelligencePanel() {
     }
   }
 
+  const aiEnabled = useMemo(() => flag(status?.enabled), [status])
+  const modeLabel = aiEnabled === null ? 'Unknown' : aiEnabled ? 'AI-assisted (paper)' : 'Normal (current rules)'
+  const setMode = (enabled: boolean) => (
+    runAction(enabled ? 'AI mode' : 'Normal mode', () => api.setIntelligenceMode(enabled, adminToken))
+  )
+
   const failClosed = useMemo(
     () => findDeep(status?.config, ['fail_closed', 'failClosed', 'fail_closed_on_error']),
     [status],
@@ -332,6 +338,45 @@ export default function IntelligencePanel() {
           <div className="intel-label">Last model check</div>
           <div className="intel-value">{when(health?.ts)}</div>
           <div className="intel-sub">local time (en-IN)</div>
+        </div>
+      </div>
+
+      <div className="card mode-card" style={{ marginTop: 14 }}>
+        <div className="card-head">
+          <div>
+            <h2>Trading mode</h2>
+            <span className="sub">switch between the current rules engine and the new AI review layer</span>
+          </div>
+          <span className={`pill ${aiEnabled === true ? 'live' : 'off'}`}>
+            <span className="dot" />{modeLabel}
+          </span>
+        </div>
+        <div className="card-body mode-switch">
+          <button
+            className={`btn mode-option ${aiEnabled === false ? 'primary' : ''}`}
+            disabled={busy || loading || aiEnabled === null}
+            onClick={() => void setMode(false)}
+          >
+            <strong>Normal</strong>
+            <span>Current deterministic scanner, scoring, risk gates and paper broker.</span>
+          </button>
+          <button
+            className={`btn mode-option ${aiEnabled === true ? 'primary' : ''}`}
+            disabled={busy || loading || aiEnabled === null}
+            onClick={() => void setMode(true)}
+          >
+            <strong>AI-assisted</strong>
+            <span>Six-agent review before new paper entries. Model failure blocks entries.</span>
+          </button>
+        </div>
+        <div className="card-body mode-note">
+          Paper-only in both modes. Switching does not place orders or change capital, risk limits or
+          the square-off rules.{' '}
+          {aiEnabled === true && flag(health?.ok) === false && (
+            <span style={{ color: 'var(--yellow)' }}>
+              Model health is DEGRADED — fix the model key/endpoint before expecting AI entries.
+            </span>
+          )}
         </div>
       </div>
 
@@ -579,7 +624,8 @@ export default function IntelligencePanel() {
             />
           </label>
           <span className="tiny muted">
-            Required for research, promote and rollback. Kept in this browser session only.
+            Required for research, promote and rollback. If an admin token is configured on the
+            server, the mode switch uses it too. Kept in this browser session only.
           </span>
         </div>
         {versions.length === 0 ? (

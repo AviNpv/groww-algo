@@ -484,6 +484,137 @@ export interface PortfolioFeed {
   checked_at: string
 }
 
+/* ================= runtime intelligence ================= */
+/** Rows from the intelligence store are schema-tolerant: older/newer backends may add fields. */
+export type IntelRecord = Record<string, unknown>
+
+export interface IntelligenceStatus {
+  enabled?: boolean
+  config?: IntelRecord
+  storage?: IntelRecord
+  scheduler?: IntelRecord
+  detail?: string
+  [key: string]: unknown
+}
+
+export interface IntelligenceHealth {
+  ok?: boolean
+  provider?: string
+  model?: string
+  ts?: string
+  latency_ms?: number | null
+  message?: string
+  paid_allowed?: boolean
+  detail?: string
+  [key: string]: unknown
+}
+
+export interface IntelligenceDecisionRow extends IntelRecord {
+  id?: string
+  decision_id?: string
+  ts?: string
+  symbol?: string
+  action?: string
+  rationale?: string
+  model_ok?: boolean | number
+  reject_reasons?: string[]
+  payload?: IntelRecord
+  [key: string]: unknown
+}
+
+export interface IntelligenceObjection extends IntelRecord {
+  id?: string
+  severity?: string
+  category?: string
+  message?: string
+  requires_resolution?: boolean
+  resolved?: boolean
+  [key: string]: unknown
+}
+
+export interface IntelligenceAgentReport extends IntelRecord {
+  agent_id?: string
+  agent_name?: string
+  symbol?: string | null
+  status?: string
+  summary?: string
+  recommendation?: string
+  confidence?: number
+  uncertainty?: number
+  objections?: IntelligenceObjection[]
+  missing_information?: string[]
+  [key: string]: unknown
+}
+
+export interface IntelligenceDebate extends IntelRecord {
+  symbol?: string
+  snapshot_id?: string
+  ts?: string
+  rounds?: number
+  reports?: IntelligenceAgentReport[]
+  unresolved_critical?: IntelligenceObjection[]
+  consensus_score?: number
+  decision?: string
+  rationale?: string
+  detail?: string
+  [key: string]: unknown
+}
+
+export interface IntelligenceUsageRow extends IntelRecord {
+  id?: string
+  usage_id?: string
+  ts?: string
+  provider?: string
+  model?: string
+  ok?: boolean | number
+  latency_ms?: number | null
+  total_tokens?: number | null
+  error?: string | null
+  correlation_id?: string | null
+  [key: string]: unknown
+}
+
+export interface IntelligenceExecutionRow extends IntelRecord {
+  id?: string
+  event_id?: string
+  ts?: string
+  symbol?: string | null
+  event?: string
+  decision_id?: string | null
+  order_id?: number | null
+  detail?: string
+  paper_only?: boolean | number
+  [key: string]: unknown
+}
+
+export interface IntelligenceVersionRow extends IntelRecord {
+  id?: string
+  version_id?: string
+  ts?: string
+  status?: string
+  params?: IntelRecord
+  metrics?: IntelRecord
+  parent_version_id?: string | null
+  rationale?: string
+  [key: string]: unknown
+}
+
+export interface IntelligenceList<T> {
+  items?: T[]
+  decisions?: T[]
+  usage?: T[]
+  executions?: T[]
+  versions?: T[]
+  [key: string]: unknown
+}
+
+export interface IntelligenceActionResult extends IntelRecord {
+  ok?: boolean
+  message?: string
+  detail?: string
+  [key: string]: unknown
+}
+
 export interface PortfolioResponse {
   ok: boolean
   errors: Record<string, string>

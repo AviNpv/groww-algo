@@ -1,6 +1,6 @@
 # Autonomous Runtime Intelligence Layer — Design Checkpoint
 
-Branch: `ai-intelligence` · Baseline commit: `bc2136f` · Status: Phase 1 complete, Phase 2 design approved for implementation.
+Branch: `ai-intelligence` · Baseline commit: `bc2136f` · Status: Phases 1–10 implemented and locally validated; awaiting independent sign-off and explicit deployment approval. Not pushed, not deployed.
 
 ## 1. Baseline preserved
 
@@ -118,3 +118,31 @@ Final orchestrator output: `ALLOW|REJECT`, `snapshot_id`, `debate`, `rule_decisi
 - Phase 8: new Intelligence tab and API; evidence: build + browser smoke.
 - Phase 9: no production deploy until QA/security sign-off and explicit approval.
 - Phase 10: validation reports and known limitations.
+
+## 8. Implementation checkpoint
+
+All modules in section 3 are present. The additive router is mounted at
+`/api/intelligence/*`, the single engine hook sits immediately before
+`broker.buy`, and the layer remains disabled in both strategy YAML files.
+
+Post-audit hardening included in this checkpoint:
+
+- Debate always requires the Critic and Risk Analyst roles; opaque agent IDs
+  cannot stand in for them. Orchestrator passes the canonical agent IDs.
+- Promotion re-checks the safe-path diff against the active baseline and the
+  atomic writer repeats the absolute safety guard. A baseline is seeded before
+  the first promotion, and `strategy.yaml.bak` has a validated restore path.
+- Model credentials may only come from `GROQ_API_KEY` or
+  `INTELLIGENCE_MODEL_API_KEY`; hosted endpoints are restricted to the
+  allowlisted free providers, and localhost endpoints never receive the hosted
+  credential. The Settings YAML editor applies the same validation.
+- Strategy-changing POST routes require `INTELLIGENCE_ADMIN_TOKEN` through the
+  `X-Intelligence-Token` header. With no token configured, mutation is disabled.
+- Any orchestration exception rejects a new entry, even if
+  `require_for_entries` is false. Only the explicit disabled path leaves the
+  original deterministic behavior unchanged.
+- API evidence responses are scrubbed for secret-like fields while preserving
+  numeric token counts.
+
+See `docs/ai-security-audit.md` and `docs/ai-testing-report.md` for the
+independent reviews and final verdicts.

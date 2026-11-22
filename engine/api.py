@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from engine import backtest, broker, groww_auth, groww_data, ledger, marketdata, scanner, strategy, universe
 from engine.engine import ENGINE
+from engine.intelligence.api import router as intelligence_router
 from engine.settings import (
     BASE_DIR, CACHE_DIR, CONFIG_DIR, CONFIG_PATH,
     cfg, load_config, load_raw_config, normalize_config, now_ist,
@@ -34,6 +35,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Additive intelligence surface. Existing endpoints and response shapes are unchanged.
+app.include_router(intelligence_router)
+_INTELLIGENCE_SCHEDULER = None
 
 
 class ScanRequest(BaseModel):
@@ -78,15 +83,34 @@ class ChartRequest(BaseModel):
 
 @app.on_event("startup")
 def _startup() -> None:
+    global _INTELLIGENCE_SCHEDULER
     ledger.init_db()
     ledger.ensure_day()
     if cfg("engine", "enabled", default=True):
         ENGINE.start()
 
+    # Optional research scheduler. Any failure is contained so the existing
+    # paper-trading app still starts; model/agent health remains fail-closed.
+    try:
+        from engine.intelligence import config as ai_config
+        from engine.intelligence import storage as ai_storage
+        if ai_config.enabled() and ai_config.evolution().get("research_enabled"):
+            from engine.intelligence.scheduler import IntelligenceScheduler
+            ai_storage.init_db()
+            _INTELLIGENCE_SCHEDULER = IntelligenceScheduler()
+            _INTELLIGENCE_SCHEDULER.start()
+    except Exception:
+        _INTELLIGENCE_SCHEDULER = None
+
 
 @app.on_event("shutdown")
 def _shutdown() -> None:
     ENGINE.stop()
+    try:
+        if _INTELLIGENCE_SCHEDULER is not None:
+            _INTELLIGENCE_SCHEDULER.stop()
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------
@@ -620,6 +644,21 @@ def _validate_time(value, label: str) -> None:
         raise HTTPException(status_code=400, detail=f"{label} must be HH:MM") from exc
 
 
+def _validate_intelligence_config(data: dict) -> None:
+    """Block credential redirection through the writable strategy editor."""
+    block = data.get("intelligence")
+    model = block.get("model") if isinstance(block, dict) else None
+    if not isinstance(model, dict):
+        return
+    try:
+        from engine.intelligence.config import validate_model_settings
+    except Exception:
+        return
+    errors = validate_model_settings(model)
+    if errors:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
+
+
 def _validate_strategy(text: str) -> dict:
     """Parse + sanity-check a V4 or legacy strategy document before writing."""
     try:
@@ -628,6 +667,7 @@ def _validate_strategy(text: str) -> dict:
         raise HTTPException(status_code=400, detail=f"YAML parse error: {exc}") from exc
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="The strategy must be a YAML mapping")
+    _validate_intelligence_config(data)
 
     is_v4 = bool(data.get("app")) or "minimum_score" in (data.get("entry") or {}) \
         if isinstance(data.get("entry"), dict) else bool(data.get("app"))

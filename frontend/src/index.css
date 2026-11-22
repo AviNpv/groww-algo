@@ -928,3 +928,33 @@ pre.yaml {
   .sf-stage, .sf-weight-bar i { transition: none; }
   .sf-stage.active { transform: none; }
 }
+
+/* ================= runtime intelligence ================= */
+.intel-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.intel-card { padding: 12px 14px; min-width: 0; }
+.intel-label { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+.intel-value { font-size: 16px; font-weight: 700; margin: 4px 0 3px; }
+.intel-sub { color: var(--muted); font-size: 11px; }
+.intel-wrap { white-space: normal; overflow-wrap: anywhere; }
+.intel-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--text); font: inherit; font-weight: 700; text-align: left;
+}
+.intel-link:hover { color: var(--yellow); }
+.intel-reports { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 10px; }
+.intel-report {
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; min-width: 0;
+}
+.intel-report-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.intel-objection { display: flex; align-items: flex-start; gap: 7px; font-size: 11.5px; }
+@media (max-width: 900px) {
+  .intel-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+  .intel-status-grid { grid-template-columns: minmax(0, 1fr); }
+}

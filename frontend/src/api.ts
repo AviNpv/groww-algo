@@ -19,6 +19,15 @@ import type {
   ConfigSaveResponse,
   CredentialsResponse,
   EquityPoint,
+  IntelligenceActionResult,
+  IntelligenceDebate,
+  IntelligenceDecisionRow,
+  IntelligenceExecutionRow,
+  IntelligenceHealth,
+  IntelligenceList,
+  IntelligenceStatus,
+  IntelligenceUsageRow,
+  IntelligenceVersionRow,
   LiveResponse,
   PortfolioResponse,
   Overview,
@@ -57,6 +66,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(detail.slice(0, 300) || `${response.status} ${response.statusText}`)
   }
   return response.json() as Promise<T>
+}
+
+/** Strategy-changing intelligence endpoints require an operator token. */
+function adminPost(path: string, token: string): Promise<IntelligenceActionResult> {
+  return request<IntelligenceActionResult>(path, {
+    method: 'POST',
+    headers: token ? { 'X-Intelligence-Token': token } : {},
+  })
 }
 
 export const api = {
@@ -122,6 +139,26 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /* Runtime intelligence (separate read-only evidence store + explicit actions). */
+  intelligenceStatus: () => request<IntelligenceStatus>('/intelligence/status'),
+  intelligenceHealth: () => request<IntelligenceHealth>('/intelligence/health'),
+  intelligenceDecisions: (limit = 20, symbol = '') =>
+    request<IntelligenceList<IntelligenceDecisionRow>>(
+      `/intelligence/decisions?limit=${limit}&symbol=${encodeURIComponent(symbol)}`,
+    ),
+  intelligenceDebate: (symbol: string) =>
+    request<IntelligenceDebate>(`/intelligence/debate/${encodeURIComponent(symbol)}`),
+  intelligenceUsage: (limit = 50) =>
+    request<IntelligenceList<IntelligenceUsageRow>>(`/intelligence/usage?limit=${limit}`),
+  intelligenceExecutions: (limit = 50) =>
+    request<IntelligenceList<IntelligenceExecutionRow>>(`/intelligence/executions?limit=${limit}`),
+  intelligenceVersions: (limit = 30) =>
+    request<IntelligenceList<IntelligenceVersionRow>>(`/intelligence/versions?limit=${limit}`),
+  runEvolution: (token = '') => adminPost('/intelligence/evolution/run', token),
+  promoteStrategy: (versionId: string, token = '') =>
+    adminPost(`/intelligence/strategy/${encodeURIComponent(versionId)}/promote`, token),
+  rollbackStrategy: (token = '') => adminPost('/intelligence/strategy/rollback', token),
 }
 
 // Helper functions

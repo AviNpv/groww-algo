@@ -115,6 +115,9 @@ def scan(symbols: list[str] | None = None, with_fundamentals: bool | None = None
             scored["delayed"] = bool(quote.get("delayed", source != "groww"))
             age = _quote_age_sec(quote)
             scored["quote_age_sec"] = round(age, 1) if age is not None else None
+            # Provenance for downstream consumers (intelligence snapshots).
+            # Additive only: existing fields and score semantics are unchanged.
+            scored["as_of"] = quote.get("as_of")
             scored["data_stale"] = bool(reject_stale and age is not None and age > max_age)
             scored["closed_candle"] = bool(closed_only)
 

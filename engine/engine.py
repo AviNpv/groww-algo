@@ -9,6 +9,60 @@ from engine import broker, ledger, marketdata, scanner, strategy
 from engine.settings import cfg
 
 
+def _intelligence_gate(signal: dict, held: set[str]) -> tuple[bool, dict | None]:
+    """Advisory AI gate before a paper buy.
+
+    This is deliberately lazy: when intelligence is disabled the existing
+    deterministic path is unchanged. When enabled, any failure fails closed so
+    no new AI-dependent entry can bypass the runtime intelligence layer.
+    """
+    try:
+        enabled = bool(cfg("intelligence", "enabled", default=False))
+    except Exception:
+        enabled = False
+    if not enabled:
+        return True, None
+
+    try:
+        from engine.intelligence import config as ai_config
+        from engine.intelligence import orchestrator as ai_orchestrator
+
+        if not ai_config.enabled():
+            return True, None
+        orchestrator = getattr(ai_orchestrator, "ORCHESTRATOR", None)
+        if orchestrator is None:
+            orchestrator = ai_orchestrator.Orchestrator()
+            ai_orchestrator.ORCHESTRATOR = orchestrator
+        decision = orchestrator.evaluate(signal, held=held)
+        payload = decision.model_dump() if hasattr(decision, "model_dump") else {
+            "symbol": signal.get("symbol"), "action": str(getattr(decision, "action", "REJECT")),
+            "rationale": str(getattr(decision, "rationale", "invalid decision")),
+        }
+        return payload.get("action") == "ALLOW", payload
+    except Exception as exc:
+        payload = {
+            "symbol": signal.get("symbol"),
+            "action": "REJECT",
+            "rationale": "intelligence gate unavailable",
+            "reject_reasons": [f"intelligence gate error: {type(exc).__name__}"],
+        }
+        try:
+            from engine.intelligence import storage as ai_storage
+            from engine.intelligence.models import ExecutionLog
+            from engine.settings import now_ist
+            ai_storage.init_db()
+            ai_storage.save_execution_log(ExecutionLog(
+                ts=now_ist().isoformat(timespec="seconds"),
+                symbol=signal.get("symbol"),
+                event="intelligence_gate_error",
+                detail=f"{type(exc).__name__}: intelligence gate unavailable",
+                paper_only=True,
+            ))
+        except Exception:
+            pass
+        return False, payload
+
+
 class AlgoEngine:
     def __init__(self) -> None:
         self._thread: threading.Thread | None = None
@@ -160,6 +214,17 @@ class AlgoEngine:
                         if not allowed:
                             result["trade_errors"].append(reason)
                             break
+                        ai_allowed, ai_decision = _intelligence_gate(signal, held)
+                        signal["ai_decision"] = ai_decision
+                        if not ai_allowed:
+                            detail = ""
+                            if ai_decision:
+                                detail = ai_decision.get("rationale") or "; ".join(
+                                    ai_decision.get("reject_reasons") or [])
+                            result["trade_errors"].append(
+                                f"{signal['symbol']}: intelligence rejected entry ({detail})"
+                            )
+                            continue
                         order = broker.buy(
                             signal["symbol"], signal["price"], signal["qty"],
                             signal["stop"], signal["target"], signal.get("score", 0),

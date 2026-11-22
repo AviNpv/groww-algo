@@ -59,7 +59,8 @@ groww-algo/
 │  ├─ strategy.yaml      ← V4 paper-trading rules (edit this, no restart)
 │  ├─ strategy.default.yaml ← shipped V4 defaults for "Restore"
 │  ├─ nifty500_symbols.txt ← V4 universe, one NSE symbol per line
-│  └─ nifty500.txt       ← legacy universe file
+│  ├─ nifty500.txt       ← legacy universe file
+│  └─ nse_holidays.txt   ← exchange holidays for the intelligence scheduler
 ├─ engine/
 │  ├─ settings.py        config loader, IST market clock
 │  ├─ groww_auth.py      TOTP token minting + on-disk token cache
@@ -76,10 +77,28 @@ groww-algo/
 │  ├─ broker.py          simulated fills with slippage + brokerage + STT
 │  ├─ ledger.py          SQLite: account, trades, positions, daily equity
 │  ├─ engine.py          the automation loop (scan → enter → manage → square off)
-│  └─ api.py             FastAPI surface used by the dashboard
+│  ├─ api.py             FastAPI surface used by the dashboard
+│  └─ intelligence/      opt-in advisory layer (separate store, no orders)
+│     ├─ models.py       frozen evidence/debate/decision contracts
+│     ├─ config.py       safe config access + credential endpoint allowlist
+│     ├─ storage.py      data/intelligence.sqlite evidence store
+│     ├─ snapshot.py     validated timestamped market snapshot
+│     ├─ model_adapter.py bounded OpenAI-compatible / local model calls
+│     ├─ prompts.py      six agent prompts + structured schemas
+│     ├─ agents.py       six advisory agents
+│     ├─ debate.py       deterministic multi-agent debate
+│     ├─ rule_engine.py  independent risk/session/rule gate
+│     ├─ orchestrator.py single gate before the paper buy
+│     ├─ evolution.py    research, validation, promotion, rollback
+│     ├─ scheduler.py    24×7 research / session-only scanning
+│     └─ api.py          additive /api/intelligence/* router
 ├─ scripts/seed_demo.py  labelled DEMO history for the calendar
 ├─ frontend/             React 19 + Vite + TypeScript dashboard
-└─ data/algo.sqlite      runtime state (git-ignored)
+│  └─ src/components/IntelligencePanel.tsx ← new evidence tab
+├─ docs/ai-*.md          design, QA and security evidence
+└─ data/
+   ├─ algo.sqlite        runtime ledger state (git-ignored)
+   └─ intelligence.sqlite separate advisory evidence (git-ignored)
 ```
 
 ---
@@ -160,9 +179,85 @@ speed, with per-symbol Groww candles as a fallback.
 - **Positions** — live paper positions with unrealised P&L, R multiple, stop and
   target, and a manual close button.
 - **Trades** — the full ledger with charges and exit reasons.
+- **Intelligence** — opt-in agent evidence, debate, model usage, rule decisions,
+  strategy versions and the operator-token controls. It has its own 5 s read
+  poll and does **not** change the 1 s `/api/live` loop.
 - **Settings** — runtime config and the raw `strategy.yaml`.
 
 The page polls `/api/live` every 1 s, so the dashboard and calendar stay in sync.
+
+### Runtime intelligence layer (opt-in)
+
+The six-agent layer is additive and **off by default**. Leave
+`intelligence.enabled: false` in `config/strategy.yaml` and the original
+deterministic scanner/broker path is unchanged. When enabled:
+
+1. A validated, timestamped snapshot is built from the real scanner, feed health,
+   ledger and config. Missing information is explicit.
+2. Six advisory agents report evidence, uncertainty and objections:
+   Market Regime Analyst, Stock Scanner, Technical Analyst, Strategy Analyst,
+   Adversarial Critic and Risk Analyst. The Critic and Risk Analyst are mandatory.
+3. A deterministic debate rejects any candidate with an unresolved critical
+   objection. It never asks a model to arbitrate.
+4. A separate deterministic rule engine re-checks session, freshness, score ≥85,
+   R:R ≥2, stop/target, sizing, exposure, daily loss and duplicates. Agents
+   cannot bypass it.
+5. A single gate runs before `broker.buy`. If the model, debate, rule engine or
+   orchestration raises, a **new entry is rejected**. Existing positions are
+   still managed by the original deterministic exit chain.
+6. All evidence is written to `data/intelligence.sqlite`, never to the trading
+   ledger. There is no order endpoint in the intelligence router.
+
+#### Model setup
+
+The default provider is a free OpenAI-compatible endpoint:
+
+```yaml
+intelligence:
+  enabled: false
+  require_for_entries: true
+  fail_closed: true
+  model:
+    provider: openai_compatible
+    base_url: https://api.groq.com/openai/v1
+    model: llama-3.3-70b-versatile
+    api_key_env: GROQ_API_KEY
+    allow_paid: false
+```
+
+Set `GROQ_API_KEY` in the backend environment (or use the allowlisted
+`INTELLIGENCE_MODEL_API_KEY`). A localhost OpenAI-compatible server may be
+configured through `local_endpoint` with host `127.0.0.1`, `localhost` or `::1`;
+localhost calls never receive a hosted credential. Allowed hosted endpoints are
+`api.groq.com` and `generativelanguage.googleapis.com`. Unknown environment
+variable names or unapproved hosts are rejected by both the adapter and the
+Settings YAML validator. `allow_paid` is forced to `false` at runtime. There is
+no silent fallback to another provider or a paid model.
+
+Until a key/endpoint is configured, `/api/intelligence/health` reports
+`DEGRADED` and AI-dependent entries fail closed. No key value is ever stored in
+YAML, prompts, logs, evidence rows or API responses.
+
+#### Strategy-changing actions
+
+Research, promote and rollback are protected by an explicit operator token:
+
+```bat
+set INTELLIGENCE_ADMIN_TOKEN=choose-a-long-random-local-secret
+```
+
+Restart the backend after setting it. The Intelligence tab has an
+**Operator token** field; it sends `X-Intelligence-Token` and keeps the value in
+`sessionStorage` only. When the token is unset, those three POST endpoints
+return HTTP 503 and mutation is disabled. The token is never accepted in a query
+string. Read-only intelligence endpoints need no token.
+
+Strategy evolution is deterministic code, not an LLM action. It searches only
+four numeric strategy leaves, validates with the existing backtester and
+walk-forward/out-of-sample splits, requires real shadow-session evidence before
+promotion (`auto_promote: false` by default), seeds a baseline before the first
+promotion, keeps the previous version, and can roll back from either the version
+store or `strategy.yaml.bak`.
 
 ---
 
@@ -187,13 +282,24 @@ paper sessions.
 - **No fundamentals from Groww.** The API exposes orders, holdings, positions,
   margin, quotes, candles and option chain — nothing fundamental. Quality uses
   price/volume behaviour plus optional yfinance data.
-- **No backtester.** The calendar is forward paper results, not a backtest.
-  Backtesting this scorer properly is a separate job.
+- **No live model by default.** The intelligence layer is off and has no key,
+  so AI-dependent entries are rejected rather than guessed.
+- **No live Groww market-data approval yet.** V4 entries require a fresh Groww
+  quote; Yahoo remains scanning-only and delayed until that approval exists.
 
 ## Honest limitations
 
 - Chart-pattern detection is heuristic. It produces false positives by nature;
   treat patterns as one factor among six, not as a signal on its own.
+- `short_entry` is configured but the current runtime implements LONG entries
+  only. The intelligence layer does not silently enable shorts.
+- Backtests are used only to vet strategy-evolution candidates; the calendar
+  remains forward paper results. Walk-forward splits are an approximation of a
+  true point-in-time pipeline and are documented in `docs/ai-testing-report.md`.
+- No live hosted-model or full end-to-end trade smoke was performed. Model tests
+  use mocked transports; independent QA verified contracts and gates, not
+  model quality. Paper results and simulated returns are not performance
+  guarantees or investment advice.
 - Yahoo's NSE data is delayed and occasionally has gaps or splits that need
   cleaning. Groww real-time removes the delay but not the data quality caveats.
 - A ₹10,000 account with ₹100 risk per trade produces very small position
@@ -201,3 +307,40 @@ paper sessions.
   one share exceeds the exposure cap — that is the sizing rule working, not a bug.
 - Simulated results say nothing about future returns. This is research tooling,
   not investment advice.
+
+---
+
+## Validation evidence (local checkpoint, not deployed)
+
+```bat
+.\.venv\Scripts\python.exe -m compileall -q engine tests scripts
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+cd frontend && npm run build
+```
+
+Latest local run: **65 tests passed, 0 failed, 0 expected failures, 0 skipped**.
+The production bundle is committed under `frontend/dist/` with
+`index-C-JosjnT.js` and `index-8SWTpTb3.css`; `dist/index.html` references those
+files and the bundle targets `https://groww-algo.onrender.com` (no local port).
+
+Final local HTTP smoke (127.0.0.1:8010, with a throwaway admin token) returned
+200 for `/api/health`, every read-only `/api/intelligence/*` endpoint checked,
+and `/api/live`. Overview and calendar today-P&L both reported `0.00` with
+delta `0.00`. All three strategy-changing POST routes returned 401 with no
+token or a wrong token; with the valid token, promote/rollback reached route
+logic (404 for a missing version, 400 for an invalid version ID) without
+changing `strategy.yaml`. The authenticated `evolution/run` call was not
+awaited because the local research job runs multi-symbol backtests; its admin
+gate was verified by the 401 cases and code review.
+
+Independent evidence:
+
+- `docs/ai-testing-report.md` — QA suite, coverage matrix, defects and limits.
+- `docs/ai-security-audit.md` — paper-only boundary, credential/token controls,
+  final security verdict.
+- `docs/ai-intelligence-design.md` — architecture and phase gates.
+
+Nothing on this branch has been pushed or deployed. Production deployment
+requires QA/security sign-off and explicit approval. Keep
+`require_for_entries: true`, `fail_closed: true`, `auto_promote: false` and
+`allow_paid: false`.

@@ -685,7 +685,62 @@ performance:
     - risk_reward_ratio
 
 # ------------------------------------------------------------
-# 18. SAFETY CONTROLS
+# 18. RUNTIME INTELLIGENCE (paper-only advisory layer)
+# ------------------------------------------------------------
+
+intelligence:
+  # Default OFF: set to true only after configuring a free hosted model key
+  # (GROQ_API_KEY by default) or a local inference endpoint. While enabled,
+  # any AI/model failure fails closed and blocks new entries.
+  enabled: false
+  require_for_entries: true
+  fail_closed: true
+  paper_only: true
+
+  model:
+    provider: "openai_compatible"
+    base_url: "https://api.groq.com/openai/v1"
+    model: "llama-3.3-70b-versatile"
+    api_key_env: "GROQ_API_KEY"
+    timeout_seconds: 20
+    retries: 2
+    rate_limit_per_minute: 30
+    temperature: 0.1
+    max_tokens: 1200
+    structured: true
+    allow_paid: false
+    local_endpoint: null
+    local_model: null
+
+  debate:
+    rounds: 2
+    critical_objection_blocks: true
+    min_reports: 6
+
+  evolution:
+    research_enabled: true
+    interval_hours: 6
+    auto_promote: false
+    min_oos_return_pct: 0.5
+    min_walk_forward_efficiency: 0.6
+    max_drawdown_pct: 10.0
+    shadow_sessions: 5
+    candidate_count: 4
+
+  scheduler:
+    research_24x7: true
+    holidays_file: "config/nse_holidays.txt"
+    market_sessions_only: true
+
+  storage:
+    db_path: "data/intelligence.sqlite"
+
+  logging:
+    usage: true
+    decisions: true
+
+# ------------------------------------------------------------
+# 19. SAFETY CONTROLS
 # ------------------------------------------------------------
 
 safety:

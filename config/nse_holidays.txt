@@ -1,0 +1,3 @@
+# NSE holiday dates (YYYY-MM-DD), one per line.
+# The runtime scheduler combines these with configured trading days.
+# Add exchange-declared holidays here for the current year.

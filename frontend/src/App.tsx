@@ -19,8 +19,9 @@ import TradesTable from './components/TradesTable'
 import SymbolDrawer from './components/SymbolDrawer'
 import SettingsPanel from './components/SettingsPanel'
 import GrowwPortfolio from './components/GrowwPortfolio'
+import IntelligencePanel from './components/IntelligencePanel'
 
-type Tab = 'overview' | 'scanner' | 'chart' | 'positions' | 'trades' | 'portfolio' | 'settings'
+type Tab = 'overview' | 'scanner' | 'chart' | 'positions' | 'trades' | 'portfolio' | 'intelligence' | 'settings'
 
 /** Dashboard polling interval - the whole screen refreshes once per second. */
 const LIVE_REFRESH_MS = 1000
@@ -32,6 +33,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'positions', label: 'Positions' },
   { id: 'trades', label: 'Trades' },
   { id: 'portfolio', label: 'Groww Portfolio' },
+  { id: 'intelligence', label: 'Intelligence' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -675,6 +677,8 @@ export default function App() {
         )}
 
         {tab === 'portfolio' && <GrowwPortfolio />}
+
+        {tab === 'intelligence' && <IntelligencePanel />}
 
         {tab === 'settings' && (
           <SettingsPanel

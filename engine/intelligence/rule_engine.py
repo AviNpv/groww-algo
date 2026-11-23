@@ -122,7 +122,10 @@ class RuleEngine:
 
         # (b) data freshness ---------------------------------------------------
         max_age = _num(_cfg("data", "validation", "max_quote_age_seconds", default=10), 10.0)
+        require_groww = bool(_cfg(
+            "scoring", "mandatory_gates", "groww_confirmation", default=True))
         computed["max_quote_age_seconds"] = max_age
+        computed["require_groww_confirmation"] = require_groww
         if candidate is None:
             check("candidate_present", False, f"no candidate for {symbol}")
             check("data_freshness", False, "no candidate data")
@@ -132,10 +135,11 @@ class RuleEngine:
             freshness_problems: list[str] = []
             if candidate.data_stale:
                 freshness_problems.append("data_stale")
-            if str(candidate.source).strip().lower() != "groww":
-                freshness_problems.append(f"source={candidate.source}")
-            if candidate.delayed:
-                freshness_problems.append("delayed quote")
+            if require_groww:
+                if str(candidate.source).strip().lower() != "groww":
+                    freshness_problems.append(f"source={candidate.source}")
+                if candidate.delayed:
+                    freshness_problems.append("delayed quote")
             if age is None:
                 freshness_problems.append("quote_age_sec missing")
             elif _num(age, -1.0) > max_age:
@@ -143,8 +147,8 @@ class RuleEngine:
             if not candidate.as_of:
                 freshness_problems.append("as_of missing")
             check("data_freshness", not freshness_problems,
-                  "fresh Groww quote" if not freshness_problems
-                  else ", ".join(freshness_problems))
+                  ("fresh Groww quote" if require_groww else "delayed-feed diagnostic accepted")
+                  if not freshness_problems else ", ".join(freshness_problems))
 
         # (c) deterministic entry ---------------------------------------------
         rejections = list(candidate.rejection_reasons) if candidate else []
@@ -158,8 +162,8 @@ class RuleEngine:
             )
 
         # (d) score / confirmations / status ----------------------------------
-        min_score = max(60.0, _num(_cfg("entry", "min_score",
-                                        default=_cfg("entry", "minimum_score", default=60)), 60.0))
+        min_score = max(0.0, _num(_cfg("entry", "min_score",
+                                       default=_cfg("entry", "minimum_score", default=0)), 0.0))
         min_confirmations = max(
             5, int(_num(_cfg("entry", "min_confirmations",
                              default=_cfg("entry", "required_confirmations", default=5)), 5)),

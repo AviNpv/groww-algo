@@ -46,7 +46,7 @@ _SAFE_FACTORS: dict[tuple[str, ...], tuple[float, ...]] = {
     SAFE_PATHS[3]: (1.1, 1.25, 1.5),
 }
 _MIN_RR = 2.0
-_MIN_ENTRY_SCORE = 60
+_MIN_ENTRY_SCORE = 0
 _TRAIN_DAYS = 10
 _OOS_DAYS = 8
 _WARMUP_SESSIONS = 60

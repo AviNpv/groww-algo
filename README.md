@@ -182,11 +182,13 @@ speed, with per-symbol Groww candles as a fallback.
 - **Intelligence** — opt-in agent evidence, debate, model usage, rule decisions,
   strategy versions and the operator-token controls. It has its own 5 s read
   poll and does **not** change the 1 s `/api/live` loop.
-- **Agent Chat** — a real-time, paper-only group chat for one symbol. It streams
-  the actual six agents, deterministic debate and rule checks through
-  Server-Sent Events; see [docs/agent-chat.md](docs/agent-chat.md). The scripted,
-  joke-only demo remains at `/agent-demo.html`.
 - **Settings** — runtime config and the raw `strategy.yaml`.
+
+The live agent debate is **not** a dashboard tab. It has its own standalone
+site: [agent-chat-site/](agent-chat-site/) for a separate Render service, plus a
+same-domain copy at `/agent-chat.html` for immediate access. See
+[docs/agent-chat.md](docs/agent-chat.md). The scripted, joke-only demo is at
+`/agent-demo.html`.
 
 The page polls `/api/live` every 1 s, so the dashboard and calendar stay in sync.
 

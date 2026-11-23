@@ -1,8 +1,14 @@
 # Live agent group chat
 
-The **Agent Chat** tab turns one symbol's advisory review into a real-time
-group conversation. Every bubble is either a real agent report or a real
-deterministic check — nothing in the live view is pre-scripted.
+The live agent debate is a **separate website**, not a tab in the main
+dashboard. Every bubble is either a real agent report or a real deterministic
+check — nothing in the live view is pre-scripted.
+
+Two ways to open it:
+
+- Standalone Render static site: publish `agent-chat-site/` as its own service
+  (see `agent-chat-site/README.md` and the second service in `render.yaml`).
+- Same-domain copy: `https://groww-algo.onrender.com/agent-chat.html`.
 
 The funny, fully scripted version remains available at `/agent-demo.html` for
 comparison. It never calls a model.
@@ -93,9 +99,11 @@ Process-local session list for debugging. Contains no secrets.
 
 ## UI
 
-Open the dashboard and choose **Agent Chat**. Pick a symbol from the latest
-scan (or type one) and press **Start live debate**. Agent bubbles appear as
-each model call returns; the final decision is highlighted.
+Open the standalone chat site (or `/agent-chat.html` on the main domain). Pick
+a symbol from the latest scan (or type one) and press **Start live debate**.
+Agent bubbles appear as each model call returns; the final decision is
+highlighted. AI mode must be enabled on the backend first; the page shows the
+current mode and links back to the main desk if it is off.
 
 For the cleanest run, stop the engine first. The engine's automatic scan cycles
 also use the model, and the free tier can rate-limit a shared quota. A

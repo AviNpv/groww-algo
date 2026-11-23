@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b141a" />
+  <title>NSE AI Trading Desk — Live Agent Chat</title>
+  <style>
+    :root {
+      --bg: #0b141a;
+      --panel: #111b21;
+      --panel-2: #1a262e;
+      --header: #1f2c34;
+      --bubble: #202c33;
+      --bubble-in: #2a3942;
+      --text: #e9edef;
+      --muted: #8696a0;
+      --green: #00a884;
+      --yellow: #f0b90b;
+      --red: #ff6b6b;
+      --blue: #53bdeb;
+      --border: #2a3942;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 15% -10%, #123 0, transparent 42%), #05090c;
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input { font: inherit; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .shell {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      padding: 18px 16px 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 12px 16px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .brand-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: grid; place-items: center; font-size: 20px;
+      background: linear-gradient(135deg, var(--green), #128c7e);
+      flex: none;
+    }
+    .brand b { display: block; font-size: 15px; letter-spacing: -0.2px; }
+    .brand span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 5px 10px; font-size: 11px; color: var(--muted);
+    }
+    .pill.live { color: var(--green); border-color: rgba(0,168,132,.5); background: rgba(0,168,132,.1); }
+    .pill.warn { color: var(--yellow); border-color: rgba(240,185,11,.45); }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .ghost {
+      border: 1px solid var(--border); border-radius: 999px;
+      padding: 6px 11px; font-size: 11.5px; color: var(--text);
+    }
+    .ghost:hover { background: var(--panel-2); text-decoration: none; }
+
+    .banner {
+      border: 1px solid var(--border); border-radius: 10px;
+      background: var(--panel); padding: 10px 13px;
+      font-size: 12.5px; color: var(--muted); line-height: 1.5;
+    }
+    .banner.warn { border-color: rgba(240,185,11,.4); color: #f5d98a; }
+    .banner.error { border-color: rgba(255,107,107,.45); color: #ffb3b3; background: rgba(255,107,107,.07); }
+    .banner[hidden] { display: none; }
+
+    .controls {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    .controls-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field label, .field span {
+      font-size: 10.5px; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .6px;
+    }
+    .field input {
+      width: 210px; background: #0d161c; border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 9px 11px;
+      font-weight: 700; letter-spacing: .4px; outline: none;
+    }
+    .field input:focus { border-color: var(--green); }
+    .field input:disabled { opacity: .6; }
+
+    .primary {
+      background: var(--green); color: #04140f; border: 0;
+      border-radius: 8px; padding: 10px 16px; font-weight: 800;
+      cursor: pointer; font-size: 13px;
+    }
+    .primary:hover:not(:disabled) { filter: brightness(1.08); }
+    .primary:disabled { opacity: .5; cursor: not-allowed; }
+    .secondary {
+      background: transparent; color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; cursor: pointer; font-size: 12.5px;
+    }
+    .secondary:hover:not(:disabled) { background: var(--panel-2); }
+    .secondary:disabled { opacity: .45; cursor: not-allowed; }
+
+    .session-id { margin-left: auto; color: var(--muted); font: 11px ui-monospace, Consolas, monospace; }
+    .picks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+    .chip {
+      background: #0d161c; border: 1px solid var(--border); color: var(--text);
+      border-radius: 999px; padding: 4px 10px; font-size: 11px; cursor: pointer;
+    }
+    .chip:hover:not(:disabled), .chip.active { border-color: var(--green); color: var(--green); }
+    .chip:disabled { opacity: .5; cursor: not-allowed; }
+    .hint { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.5; }
+
+    .chat {
+      width: 100%; height: min(680px, 72vh); min-height: 460px;
+      display: flex; flex-direction: column; overflow: hidden;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: 0 18px 55px rgba(0,0,0,.4);
+    }
+
+    .chat-header {
+      display: flex; align-items: center; gap: 11px;
+      padding: 12px 15px; background: var(--header); border-bottom: 1px solid var(--border);
+    }
+    .avatars { display: flex; }
+    .avatars span {
+      width: 29px; height: 29px; border-radius: 50%; display: grid; place-items: center;
+      font-size: 14px; margin-left: -8px; border: 2px solid var(--header); color: #061014;
+    }
+    .avatars span:first-child { margin-left: 0; }
+    .group-title { min-width: 0; }
+    .group-title b { font-size: 13.5px; display: block; }
+    .group-title span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .badge {
+      margin-left: auto; border: 1px solid var(--border); border-radius: 999px;
+      padding: 5px 10px; font-size: 10px; letter-spacing: .7px; font-weight: 800; color: var(--muted);
+    }
+    .badge.live { color: var(--green); border-color: rgba(0,168,132,.5); background: rgba(0,168,132,.1); }
+
+    .chat-body {
+      flex: 1; overflow-y: auto; padding: 16px 14px 10px;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        radial-gradient(rgba(0,168,132,.04) 1px, transparent 1px);
+      background-size: 22px 22px, 34px 34px;
+      background-position: 0 0, 9px 11px;
+      scroll-behavior: smooth;
+    }
+
+    .empty {
+      max-width: 430px; margin: 60px auto; text-align: center;
+      color: var(--muted); background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 26px;
+    }
+    .empty-icon { font-size: 34px; margin-bottom: 8px; }
+    .empty b { display: block; color: var(--text); margin-bottom: 6px; }
+    .empty p { margin: 0; font-size: 12px; line-height: 1.55; }
+
+    .row { display: flex; gap: 9px; align-items: flex-start; margin-bottom: 13px; animation: pop .2s ease-out; }
+    @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .avatar {
+      width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+      font-size: 16px; flex: none; color: #061014; font-weight: 800; margin-top: 2px;
+    }
+    .bubble {
+      max-width: min(720px, calc(100% - 46px));
+      background: var(--bubble); border-radius: 4px 12px 12px 12px;
+      padding: 9px 12px 7px; min-width: 0;
+    }
+    .name { font-size: 11.5px; font-weight: 800; margin-bottom: 2px; }
+    .persona { font-size: 10px; font-weight: 500; font-style: italic; color: var(--muted); margin-left: 7px; }
+    .text { font-size: 13.5px; line-height: 1.48; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .meta { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 6px; color: var(--muted); font-size: 10px; }
+
+    .system {
+      width: fit-content; max-width: 90%; margin: 6px auto 13px;
+      padding: 8px 12px; border-radius: 9px; background: var(--panel-2);
+      border: 1px solid var(--border); color: var(--muted);
+      font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
+      animation: pop .2s ease-out;
+    }
+    .system .time { display: block; text-align: right; color: #5f7079; font-size: 9.5px; margin-top: 4px; }
+    .system.decision { max-width: 96%; background: rgba(240,185,11,.09); border-color: rgba(240,185,11,.55); color: #ffe9b0; font-weight: 600; }
+    .system.warning { border-color: rgba(240,185,11,.45); color: #f5d98a; }
+    .system.error { border-color: rgba(255,107,107,.5); background: rgba(255,107,107,.1); color: #ffb3b3; }
+
+    .typing {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 9px 12px; border-radius: 999px; background: var(--bubble);
+      color: var(--muted); font-size: 11px;
+    }
+    .typing i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: blink 1s infinite ease-in-out; }
+    .typing i:nth-child(2) { animation-delay: .15s; }
+    .typing i:nth-child(3) { animation-delay: .3s; }
+    @keyframes blink { 0%,60%,100% { opacity: .25; } 30% { opacity: 1; } }
+
+    .composer {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      background: var(--header); border-top: 1px solid var(--border); flex-wrap: wrap;
+    }
+    .composer input {
+      flex: 1; min-width: 220px; border: 1px solid #364852; background: #23313a;
+      color: var(--muted); border-radius: 999px; padding: 9px 13px; font-size: 12px; outline: none;
+    }
+    .composer small { color: var(--muted); font-size: 10px; }
+    .composer small b { color: var(--green); }
+
+    .notes {
+      display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px;
+    }
+    .note {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px;
+    }
+    .note b { display: block; font-size: 11.5px; margin-bottom: 5px; }
+    .note span { color: var(--muted); font-size: 11px; line-height: 1.5; display: block; }
+
+    @media (max-width: 820px) {
+      .notes { grid-template-columns: 1fr; }
+      .chat { height: 72vh; }
+      .session-id { margin-left: 0; width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">🤖</div>
+        <div>
+          <b>NSE AI Trading Desk</b>
+          <span>Standalone live agent chat · advisory only</span>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="modePill" class="pill"><span class="dot"></span>Checking AI mode…</span>
+        <span id="elapsedPill" class="pill" hidden>0s</span>
+        <a class="ghost" href="agent-demo.html">Scripted demo</a>
+        <a class="ghost" href="https://groww-algo.onrender.com/" target="_blank" rel="noreferrer">Main desk ↗</a>
+      </div>
+    </header>
+
+    <div id="modeBanner" class="banner" hidden></div>
+    <div id="errorBanner" class="banner error" hidden></div>
+
+    <section class="controls">
+      <div class="controls-row">
+        <div class="field">
+          <span>Symbol</span>
+          <input id="symbolInput" value="UNITDSPR" spellcheck="false" placeholder="e.g. UNITDSPR" />
+        </div>
+        <button id="startBtn" class="primary">Start live debate</button>
+        <button id="stopBtn" class="secondary" disabled>Disconnect</button>
+        <button id="picksBtn" class="secondary">Load scan picks</button>
+        <span id="sessionId" class="session-id"></span>
+      </div>
+      <div id="picks" class="picks" hidden><span>Latest scan:</span></div>
+      <p class="hint">
+        Each bubble is a real agent report or deterministic check streamed live from the advisory engine.
+        Nothing here can place an order. A full run may take several minutes on a free model tier;
+        rate-limited agents appear as errors and the decision fails closed.
+      </p>
+    </section>
+
+    <section class="chat">
+      <header class="chat-header">
+        <div class="avatars" id="avatars"></div>
+        <div class="group-title">
+          <b>Agent Debate Room</b>
+          <span id="chatSubtitle">6 agents · paper-only · waiting</span>
+        </div>
+        <span id="chatBadge" class="badge">READ-ONLY</span>
+      </header>
+
+      <div id="chatBody" class="chat-body" aria-live="polite">
+        <div id="emptyState" class="empty">
+          <div class="empty-icon">💬</div>
+          <b>No debate yet</b>
+          <p>Pick a symbol and start the live debate. Real model output, real rules, zero order capability.</p>
+        </div>
+      </div>
+
+      <footer class="composer">
+        <input disabled value="Agents only — this desk is read-only" />
+        <small><b>Paper-only.</b> Advisory agents only. No broker or order endpoint is reachable from this page.</small>
+      </footer>
+    </section>
+
+    <section class="notes">
+      <div class="note">
+        <b>Pipeline</b>
+        <span>One-symbol scan → six independent agent reports → deterministic debate → deterministic rules → fail-closed decision.</span>
+      </div>
+      <div class="note">
+        <b>True streaming</b>
+        <span>Server-Sent Events deliver each agent as it answers. Typing indicators are driven by real agent_start events.</span>
+      </div>
+      <div class="note">
+        <b>Safety</b>
+        <span>One run at a time, 20s cooldown, secret redaction, AI mode required, no config changes from this page.</span>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+
+      var params = new URLSearchParams(location.search);
+      var DEFAULT_API = location.hostname === 'groww-algo.onrender.com'
+        ? location.origin
+        : 'https://groww-algo.onrender.com';
+      var API_BASE = (params.get('api') || DEFAULT_API).replace(/\/$/, '');
+
+      var AGENTS = {
+        market_regime: { name: 'Market Regime', icon: '🌦️', color: '#38bdf8', persona: 'the desk weather presenter' },
+        stock_scanner: { name: 'Stock Scanner', icon: '🔍', color: '#34d399', persona: 'caffeine-powered screener' },
+        technical_analyst: { name: 'Technical Analyst', icon: '📈', color: '#fbbf24', persona: 'sees candles in his sleep' },
+        strategy_analyst: { name: 'Strategy Analyst', icon: '🧠', color: '#a78bfa', persona: 'the checklist lawyer' },
+        adversarial_critic: { name: 'Adversarial Critic', icon: '😈', color: '#fb7185', persona: 'professional sceptic' },
+        risk_analyst: { name: 'Risk Analyst', icon: '🛡️', color: '#2dd4bf', persona: 'spreadsheet bodyguard' }
+      };
+
+      var $ = function (id) { return document.getElementById(id); };
+      var source = null;
+      var busy = false;
+      var startedAt = null;
+      var ticker = null;
+
+      function textOf(value, fallback) {
+        return value === undefined || value === null || value === '' ? (fallback || '—') : String(value);
+      }
+
+      function clock(iso) {
+        var d = iso ? new Date(iso) : new Date();
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleTimeString('en-IN', { hour12: false });
+      }
+
+      function label(value) {
+        return textOf(value).replaceAll('_', ' ');
+      }
+
+      function scrollDown() {
+        var body = $('chatBody');
+        body.scrollTop = body.scrollHeight;
+      }
+
+      function clearEmpty() {
+        var empty = $('emptyState');
+        if (empty) empty.remove();
+      }
+
+      function addSystem(message, kind, time) {
+        clearEmpty();
+        var box = document.createElement('div');
+        box.className = 'system' + (kind ? ' ' + kind : '');
+        var content = document.createElement('div');
+        content.textContent = message;
+        box.appendChild(content);
+        var stamp = document.createElement('span');
+        stamp.className = 'time';
+        stamp.textContent = clock(time);
+        box.appendChild(stamp);
+        $('chatBody').appendChild(box);
+        scrollDown();
+      }
+
+      function addAgent(agentId, summary, meta, time) {
+        clearEmpty();
+        var look = AGENTS[agentId] || { name: agentId || 'Agent', icon: '🤖', color: '#64748b', persona: 'advisory agent' };
+        var row = document.createElement('div');
+        row.className = 'row';
+
+        var avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        avatar.style.background = look.color;
+        avatar.textContent = look.icon;
+        row.appendChild(avatar);
+
+        var bubble = document.createElement('div');
+        bubble.className = 'bubble';
+
+        var name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = look.name;
+        var persona = document.createElement('span');
+        persona.className = 'persona';
+        persona.textContent = look.persona;
+        name.appendChild(persona);
+        bubble.appendChild(name);
+
+        var body = document.createElement('div');
+        body.className = 'text';
+        body.textContent = summary || 'No summary returned.';
+        bubble.appendChild(body);
+
+        var metaRow = document.createElement('div');
+        metaRow.className = 'meta';
+        var metaText = document.createElement('span');
+        metaText.textContent = meta || '';
+        var stamp = document.createElement('span');
+        stamp.textContent = clock(time);
+        metaRow.appendChild(metaText);
+        metaRow.appendChild(stamp);
+        bubble.appendChild(metaRow);
+
+        row.appendChild(bubble);
+        $('chatBody').appendChild(row);
+        scrollDown();
+      }
+
+      var typingNode = null;
+      function setTyping(agentId) {
+        if (typingNode) { typingNode.remove(); typingNode = null; }
+        if (!agentId) return;
+        clearEmpty();
+        var look = AGENTS[agentId] || { name: agentId, icon: '🤖', color: '#64748b' };
+        var row = document.createElement('div');
+        row.className = 'row';
+        var avatar = document.createElement('div');
+        avatar.className = 'avatar';
+        avatar.style.background = look.color;
+        avatar.textContent = look.icon;
+        var typing = document.createElement('div');
+        typing.className = 'typing';
+        typing.appendChild(document.createTextNode(look.name + ' is thinking'));
+        for (var i = 0; i < 3; i++) typing.appendChild(document.createElement('i'));
+        row.appendChild(avatar);
+        row.appendChild(typing);
+        $('chatBody').appendChild(row);
+        typingNode = row;
+        scrollDown();
+      }
+
+      function showError(message) {
+        var box = $('errorBanner');
+        box.textContent = message;
+        box.hidden = false;
+      }
+
+      function clearError() {
+        var box = $('errorBanner');
+        box.textContent = '';
+        box.hidden = true;
+      }
+
+      function setBusy(next) {
+        busy = next;
+        $('startBtn').disabled = next;
+        $('stopBtn').disabled = !next;
+        $('symbolInput').disabled = next;
+        $('chatBadge').className = 'badge' + (next ? ' live' : '');
+        $('chatBadge').textContent = next ? '● LIVE' : 'READ-ONLY';
+        var pill = $('modePill');
+        if (next) {
+          pill.className = 'pill live';
+          pill.innerHTML = '<span class="dot"></span>LIVE';
+        }
+        if (!next && ticker) {
+          clearInterval(ticker);
+          ticker = null;
+        }
+      }
+
+      function handleEvent(event) {
+        var when = event.ts;
+        switch (event.type) {
+          case 'session':
+            addSystem(event.message || 'Live group chat connected.', '', when);
+            break;
+          case 'status':
+            addSystem(event.message || 'Working…', '', when);
+            break;
+          case 'warning':
+            addSystem(event.message || 'Warning', 'warning', when);
+            break;
+          case 'scan':
+            addSystem(
+              'Feed: ' + textOf(event.source) + (event.delayed ? ' (delayed)' : '') +
+              ' · ' + textOf(event.symbol) + ' ₹' + textOf(event.price) +
+              ' · score ' + textOf(event.score) + ' · ' + textOf(event.status) +
+              (event.quote_age_sec !== undefined && event.quote_age_sec !== null
+                ? '\nQuote age ' + event.quote_age_sec + 's' : ''),
+              '', when
+            );
+            break;
+          case 'snapshot':
+            addSystem(
+              'Market ' + (event.market_open ? 'open' : 'closed') +
+              ' · entry window ' + (event.in_entry_window ? 'open' : 'closed') +
+              ' · equity ₹' + textOf(event.equity) +
+              ' · ' + textOf(event.positions) + ' open position(s)' +
+              '\nPlan: ' + label(event.action) + ' · qty ' + textOf(event.qty) +
+              ' · stop ₹' + textOf(event.stop) + ' · target ₹' + textOf(event.target) +
+              ' · R:R ' + textOf(event.risk_reward) +
+              (event.data_stale ? '\nFeed marks this quote as stale — freshness counts against it.' : ''),
+              '', when
+            );
+            break;
+          case 'agent_start':
+            setTyping(event.agent_id);
+            break;
+          case 'agent_report': {
+            var id = event.agent_id || 'unknown';
+            if (typingNode && event.agent_id) {
+              var nameNode = typingNode.querySelector('.typing');
+              if (nameNode && nameNode.textContent.indexOf((AGENTS[event.agent_id] || {}).name || event.agent_id) === 0) {
+                setTyping(null);
+              }
+            }
+            var meta = [
+              label(event.recommendation),
+              'confidence ' + (event.confidence === undefined ? '—' : Math.round(event.confidence * 100) + '%'),
+              'status ' + textOf(event.status),
+              textOf(event.evidence_count, 0) + ' evidence'
+            ];
+            if (event.critical_objections && event.critical_objections.length) {
+              meta.push(event.critical_objections.length + ' critical objection(s)');
+            }
+            addAgent(id, event.summary, meta.join(' · '), when);
+            if (event.status === 'error') {
+              addSystem(((AGENTS[id] || {}).name || id) + ' could not complete model analysis.', 'error', when);
+            }
+            break;
+          }
+          case 'debate':
+            addSystem(
+              'Debate verdict: ' + label(event.decision) +
+              ' · consensus ' + (event.consensus_score === undefined ? '—' : Math.round(event.consensus_score * 100) + '%') +
+              ' · ' + textOf(event.reports, 0) + ' report(s) (' + textOf(event.support, 0) +
+              ' support / ' + textOf(event.oppose, 0) + ' oppose / ' + textOf(event.abstain, 0) + ' abstain)' +
+              (event.rationale ? '\n' + event.rationale : ''),
+              '', when
+            );
+            break;
+          case 'rules': {
+            var checks = event.checks || [];
+            var failed = checks.filter(function (c) { return c.ok === false; });
+            addSystem(
+              'Deterministic rules: ' + (event.allowed ? 'ALLOWED' : 'BLOCKED') +
+              ' · ' + checks.length + ' check(s)' +
+              (failed.length ? '\nFailed: ' + failed.map(function (c) { return c.name || 'check'; }).join(', ') : '') +
+              (event.reasons || []).slice(0, 4).map(function (r) { return '\n' + r; }).join(''),
+              '', when
+            );
+            break;
+          }
+          case 'decision':
+            addSystem(
+              'DECISION: ' + textOf(event.action, 'REJECT') +
+              ' · paper-only · ' + (event.model_ok ? 'model reports ok' : 'model did not complete') +
+              (event.rationale ? '\n' + event.rationale : '') +
+              (event.reject_reasons || []).slice(0, 5).map(function (r) { return '\n• ' + r; }).join(''),
+              'decision', when
+            );
+            break;
+          case 'error':
+            showError(event.message || 'The live chat failed.');
+            addSystem(event.message || 'The live chat failed.', 'error', when);
+            break;
+          case 'done':
+            setTyping(null);
+            if (source) { source.close(); source = null; }
+            setBusy(false);
+            $('chatSubtitle').textContent = '6 agents · paper-only · last debate';
+            $('modePill').className = 'pill';
+            $('modePill').innerHTML = '<span class="dot"></span>' + (event.ok ? 'DEBATE COMPLETE' : 'ENDED EARLY');
+            addSystem(
+              event.ok
+                ? 'Debate complete. The decision is saved in the intelligence ledger. No order was placed.'
+                : 'Debate ended early. See the errors above.',
+              '', when
+            );
+            break;
+          default:
+            break;
+        }
+      }
+
+      function disconnect() {
+        if (source) { source.close(); source = null; }
+        setTyping(null);
+        setBusy(false);
+        $('modePill').className = 'pill warn';
+        $('modePill').innerHTML = '<span class="dot"></span>DISCONNECTED';
+        $('chatSubtitle').textContent = '6 agents · paper-only · disconnected';
+        addSystem('Stream disconnected. The run continues server-side and its decision is still saved.');
+      }
+
+      async function start() {
+        if (busy) return;
+        clearError();
+        var symbol = $('symbolInput').value.trim().toUpperCase();
+        if (!symbol) { showError('Enter a symbol first.'); return; }
+
+        setBusy(true);
+        startedAt = Date.now();
+        $('elapsedPill').hidden = false;
+        $('chatBody').innerHTML = '';
+        $('sessionId').textContent = '';
+        $('chatSubtitle').textContent = '6 agents · paper-only · starting…';
+        addSystem('Starting live advisory review for ' + symbol + '…');
+
+        ticker = setInterval(function () {
+          if (startedAt) $('elapsedPill').textContent = Math.floor((Date.now() - startedAt) / 1000) + 's';
+        }, 1000);
+
+        try {
+          var response = await fetch(API_BASE + '/api/intelligence/chat/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ symbol: symbol })
+          });
+          var data = await response.json().catch(function () { return {}; });
+          if (!response.ok) throw new Error(data.detail || ('HTTP ' + response.status));
+          $('sessionId').textContent = data.session_id || '';
+          $('chatSubtitle').textContent = '6 agents · paper-only · live for 0s';
+
+          source = new EventSource(API_BASE + data.stream);
+          source.onmessage = function (message) {
+            try { handleEvent(JSON.parse(message.data)); }
+            catch (e) { /* ignore one malformed frame and keep listening */ }
+          };
+          source.onerror = function () {
+            if (!busy) { if (source) source.close(); source = null; return; }
+            showError('Live stream interrupted; reconnecting…');
+          };
+        } catch (err) {
+          setBusy(false);
+          $('elapsedPill').hidden = true;
+          showError(err.message || String(err));
+        }
+      }
+
+      async function checkMode() {
+        try {
+          var response = await fetch(API_BASE + '/api/intelligence/status');
+          var data = await response.json();
+          var enabled = !!(data && data.enabled);
+          var pill = $('modePill');
+          var banner = $('modeBanner');
+          if (enabled) {
+            pill.className = 'pill live';
+            pill.innerHTML = '<span class="dot"></span>AI MODE ON';
+            banner.hidden = true;
+          } else {
+            pill.className = 'pill warn';
+            pill.innerHTML = '<span class="dot"></span>AI MODE OFF';
+            banner.className = 'banner warn';
+            banner.innerHTML = 'AI mode is off. Enable it from the <a href="https://groww-algo.onrender.com/" target="_blank" rel="noreferrer">main desk</a>, then start the chat here.';
+            banner.hidden = false;
+          }
+        } catch (err) {
+          var p = $('modePill');
+          p.className = 'pill warn';
+          p.innerHTML = '<span class="dot"></span>API UNREACHABLE';
+          showError('Cannot reach ' + API_BASE + '. Use ?api=https://your-backend to point at another backend.');
+        }
+      }
+
+      async function loadPicks() {
+        var btn = $('picksBtn');
+        btn.disabled = true;
+        btn.textContent = 'Loading…';
+        try {
+          var response = await fetch(API_BASE + '/api/scan');
+          var data = await response.json();
+          var symbols = [];
+          (data.signals || []).forEach(function (row) { if (row.action === 'BUY') symbols.push(row.symbol); });
+          (data.results || []).forEach(function (row) { symbols.push(row.symbol); });
+          symbols = Array.from(new Set(symbols)).slice(0, 10);
+          var box = $('picks');
+          box.innerHTML = '';
+          var lead = document.createElement('span');
+          lead.textContent = 'Latest scan:';
+          box.appendChild(lead);
+          symbols.forEach(function (symbol) {
+            var chip = document.createElement('button');
+            chip.className = 'chip' + (symbol === $('symbolInput').value ? ' active' : '');
+            chip.type = 'button';
+            chip.textContent = symbol;
+            chip.addEventListener('click', function () {
+              $('symbolInput').value = symbol;
+              Array.prototype.forEach.call(box.querySelectorAll('.chip'), function (c) { c.classList.remove('active'); });
+              chip.classList.add('active');
+            });
+            box.appendChild(chip);
+          });
+          box.hidden = symbols.length === 0;
+        } catch (err) {
+          showError('Could not load scan picks: ' + (err.message || err));
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Load scan picks';
+        }
+      }
+
+      Object.keys(AGENTS).forEach(function (id) {
+        var span = document.createElement('span');
+        span.style.background = AGENTS[id].color;
+        span.title = AGENTS[id].name;
+        span.textContent = AGENTS[id].icon;
+        $('avatars').appendChild(span);
+      });
+
+      $('startBtn').addEventListener('click', start);
+      $('stopBtn').addEventListener('click', disconnect);
+      $('picksBtn').addEventListener('click', loadPicks);
+      $('symbolInput').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') start();
+      });
+      window.addEventListener('beforeunload', function () {
+        if (source) source.close();
+      });
+
+      checkMode();
+    })();
+  </script>
+</body>
+</html>

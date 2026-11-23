@@ -9,3 +9,12 @@ services:
     startCommand: python -m uvicorn engine.api:app --host 0.0.0.0 --port $PORT
     envVars:
       PORT: [10000]
+
+  # Standalone real-time agent chat. Separate service, separate URL.
+  # It calls the backend above via /api, so no credentials are needed here.
+  - type: web
+    name: groww-agent-chat
+    env: static
+    plan: free
+    buildCommand: echo "static agent chat"
+    staticPublishPath: ./agent-chat-site

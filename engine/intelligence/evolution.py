@@ -46,7 +46,7 @@ _SAFE_FACTORS: dict[tuple[str, ...], tuple[float, ...]] = {
     SAFE_PATHS[3]: (1.1, 1.25, 1.5),
 }
 _MIN_RR = 2.0
-_MIN_ENTRY_SCORE = 85
+_MIN_ENTRY_SCORE = 60
 _TRAIN_DAYS = 10
 _OOS_DAYS = 8
 _WARMUP_SESSIONS = 60
@@ -128,7 +128,7 @@ def _check_absolute_safety(data: Any) -> None:
         raise ValueError("app.mode and engine.execution_mode must stay paper")
     score = _get(data, ("entry", "minimum_score"))
     if score is not None and float(score) != _MIN_ENTRY_SCORE:
-        raise ValueError("entry.minimum_score must remain 85")
+        raise ValueError(f"entry.minimum_score must remain {_MIN_ENTRY_SCORE:g}")
     for path in (
         ("entry", "min_risk_reward"),
         ("entry", "risk", "minimum_risk_reward"),

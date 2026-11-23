@@ -83,7 +83,7 @@ def build_entry(c: dict, equity: float, cash: float, held: set[str],
         rejections.append("daily trade limit reached for this symbol")
     if c.get("status") != "QUALIFIED":
         rejections.append(f"status {c.get('status', 'UNKNOWN')}")
-    if float(c.get("score", 0)) < float(_p(params, "entry", "min_score", 85)):
+    if float(c.get("score", 0)) < float(_p(params, "entry", "min_score", 60)):
         rejections.append(f"score {c.get('score')} below V4 minimum")
     if int(c.get("confirmations", 0)) < int(
             _rule(params, "entry", "required_confirmations",

@@ -68,7 +68,7 @@ defects reproducible; if the implementation is fixed, unittest will report an
 | # | Requirement | Result | Representative tests |
 | --- | --- | --- | --- |
 | 1 | Debate blocks unresolved critical objections from Adversarial Critic / Risk Analyst; `insufficient_evidence` when reports missing | Verified | `test_critic_unresolved_critical_objection_rejects`, `test_risk_analyst_unresolved_critical_objection_rejects`, `test_*_blocks_even_when_aggregation_flag_is_off`, `test_resolved_or_nonblocking_objection_does_not_reject`, `test_missing_reports_report_insufficient_evidence`, `test_missing_critical_role_reports_insufficient_evidence`, `test_error_status_report_is_insufficient_evidence` |
-| 2 | RuleEngine rejects stale data, non-Groww/delayed source, score <85, R:R <2, duplicate held symbol, daily-loss/portfolio gate failure, outside market window | Verified | `test_stale_data_is_rejected`, `test_non_groww_or_delayed_source_is_rejected`, `test_score_below_85_is_rejected`, `test_risk_reward_below_2_is_rejected`, `test_duplicate_held_symbol_is_rejected`, `test_duplicate_ledger_position_is_rejected`, `test_daily_loss_gate_failure_is_rejected`, `test_outside_market_window_is_rejected`, `test_config_cannot_lower_score_or_rr_floors`, `test_baseline_candidate_is_allowed` |
+| 2 | RuleEngine rejects stale data, non-Groww/delayed source, score <60, R:R <2, duplicate held symbol, daily-loss/portfolio gate failure, outside market window | Verified | `test_stale_data_is_rejected`, `test_non_groww_or_delayed_source_is_rejected`, `test_score_below_60_is_rejected`, `test_risk_reward_below_2_is_rejected`, `test_duplicate_held_symbol_is_rejected`, `test_duplicate_ledger_position_is_rejected`, `test_daily_loss_gate_failure_is_rejected`, `test_outside_market_window_is_rejected`, `test_config_cannot_lower_score_or_rr_floors`, `test_baseline_candidate_is_allowed` |
 | 3 | Orchestrator fails closed on model failure/exception; refuses ALLOW on debate/rule rejection; disabled path unchanged | Verified with one documented caveat (§5) | `test_agent_exception_fails_closed`, `test_error_reports_fail_closed`, `test_debate_rejection_refuses_allow`, `test_debate_insufficient_evidence_refuses_allow`, `test_rule_rejection_refuses_allow`, `test_unresolved_critical_objection_refuses_allow`, `test_exception_in_evaluation_fails_closed`, `test_disabled_path_allows_without_running_any_ai_gate`, `test_engine_hook_*` |
 | 4 | ModelAdapter never dumps env vars/secrets, fails cleanly without a key, validates structured JSON, logs usage | Verified | `test_no_environment_dump_in_request_body_or_usage` (asserts exactly one env read, no env names/values in request body or usage), `test_missing_api_key_fails_cleanly_and_logs_usage`, `test_structured_json_is_validated`, `test_secret_is_redacted_from_http_error_usage`, `test_local_endpoint_never_receives_hosted_credential` |
 | 5 | Evolution cannot change app.mode, execution mode, safety flags, capital, risk limits, leverage, score floor, R:R below 2; rollback preserves previous version | Verified with one defect (BUG-2) | `test_absolute_safety_guard_rejects_unsafe_documents`, `test_only_safe_paths_diff_is_allowed`, `test_generated_candidates_only_change_safe_leaves`, `test_rollback_restores_previous_version_without_writing_config`, `test_promotion_rejects_unsafe_yaml_without_writing`, `test_promotion_requires_real_shadow_evidence`, `test_promotion_rejects_tampered_capital_or_leverage` (expected failure) |
@@ -390,3 +390,15 @@ rejected versions without successful validation, so no invalid config was ever
 installed, but the status label was misleading. Added
 `test_failed_validation_stays_rejected_not_shadow`. Final verification:
 `compileall` exit 0 and full discovery suite **73 tests, OK**.
+
+### Entry score test override to 60 (2026-11-23)
+
+The operator explicitly requested lowering the minimum entry score from 85 to 60
+to exercise the full pipeline. The value was changed in both strategy YAMLs and
+in every hard-coded floor that would otherwise reject the config:
+`evolution._MIN_ENTRY_SCORE`, `rule_engine.min_score`, and the score defaults in
+`api.py`, `scoring.py`, `settings.py` and `strategy.py`. Regression fixtures and
+documentation were updated together; the renamed test is
+`test_score_below_60_is_rejected`. R:R remains 2.0, paper-only mode and the
+Groww-confirmation data gate are unchanged. Final verification: `compileall`
+exit 0 and full discovery suite **73 tests, OK**.

@@ -87,7 +87,7 @@ After those are fixed, and with `require_for_entries: true` / `fail_closed: true
 
 ### Agent boundaries — PASS
 - No intelligence module imports or calls `broker.buy`/`sell`, `groww_auth`, or config writers other than the evolution module (grep over `engine/intelligence/*.py`).
-- Risk/session/permission reads are deterministic: `rule_engine.py:99-121` reads `engine.enabled`, `autotrade`, `allow_new_entries`; `rule_engine.py:255-266` calls `strategy.can_open_new`; `rule_engine.py:161-184` floors score at 85 and R:R at 2.0; `rule_engine.py:268-287` checks duplicates/daily caps. None of these consume agent output.
+- Risk/session/permission reads are deterministic: `rule_engine.py:99-121` reads `engine.enabled`, `autotrade`, `allow_new_entries`; `rule_engine.py:255-266` calls `strategy.can_open_new`; `rule_engine.py:161-184` floors score at 60 (test override) and R:R at 2.0; `rule_engine.py:268-287` checks duplicates/daily caps. None of these consume agent output.
 - Model output fields that could influence identity/status are overwritten (`agents.py:120-129`).
 
 ### Promotion path — mostly PASS
@@ -335,3 +335,10 @@ mutation appear ready for promotion. Promotion still requires
 `validation_passed: true` plus completed shadow sessions, and the committed
 default remains Normal. Final verification: `compileall` exit 0 and full
 discovery suite **73 tests, OK**.
+
+On 2026-11-23 the operator explicitly approved lowering the minimum entry score
+floor from 85 to 60 for pipeline testing. The override was applied to both YAMLs
+and to the evolution/rule-engine floors so no hidden 85 guard remains. It does
+not change paper-only execution, R:R 2.0, admin gating, or the requirement for
+fresh Groww-confirmed data before an entry can be considered. Final verification:
+`compileall` exit 0 and full discovery suite **73 tests, OK**.

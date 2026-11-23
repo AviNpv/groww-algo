@@ -5,7 +5,7 @@ Branch: `main` (developed on `ai-intelligence`) · Baseline commit: `bc2136f` ·
 ## 1. Baseline preserved
 
 - Existing FastAPI backend, React/Vite frontend, SQLite ledger, Groww read-only data client, paper broker, scanner, scoring and V4 config remain in place.
-- Baseline invariants: score maximum 100, minimum entry score 85, minimum R:R 2.0, LONG/SHORT configured, paper-only execution, 5× intraday leverage, capital ₹10,000, risk ₹100, daily loss cap ₹300.
+- Baseline invariants: score maximum 100, minimum entry score 60 (test override from 85), minimum R:R 2.0, LONG/SHORT configured, paper-only execution, 5× intraday leverage, capital ₹10,000, risk ₹100, daily loss cap ₹300.
 - No real order endpoint, credential access, or live execution path is added.
 - Note: current runtime implements LONG entries only; `short_entry` is configured but not executed. The intelligence layer must not silently create live shorts.
 
@@ -93,7 +93,7 @@ Timestamped IST snapshot built only from real `scanner.scan()`, `marketdata.heal
 All six reports, rounds, resolved/unresolved objections, consensus score, and `decision` (`approve_candidate|reject_candidate|insufficient_evidence`). Any unresolved critical objection rejects a new candidate. The Critic and Risk Analyst run independently and cannot be suppressed by other agents.
 
 ### RuleDecision
-Deterministic checks only: market session, data freshness, entry conditions, score ≥85, R:R ≥2, valid stop/target, position size, exposure, daily loss, duplicate position. Calls existing `strategy.build_entry`, `strategy.can_open_new`, `broker.size_position` and ledger reads. It never calls `broker.buy`.
+Deterministic checks only: market session, data freshness, entry conditions, score ≥60, R:R ≥2, valid stop/target, position size, exposure, daily loss, duplicate position. Calls existing `strategy.build_entry`, `strategy.can_open_new`, `broker.size_position` and ledger reads. It never calls `broker.buy`.
 
 ### TradeDecision
 Final orchestrator output: `ALLOW|REJECT`, `snapshot_id`, `debate`, `rule_decision`, rationale, model usage IDs and timestamp. Persisted before execution.

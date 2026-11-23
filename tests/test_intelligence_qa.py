@@ -103,7 +103,7 @@ def make_snapshot(candidate: CandidateSnapshot | None = None,
         feed=FeedState(active="groww", source="groww", groww_ok=True, delayed=False),
         account=AccountState(**acc), positions=[],
         candidates=[candidate if candidate is not None else make_candidate()],
-        config_baseline={"mode": "paper", "min_score": 85, "min_rr": 2.0},
+        config_baseline={"mode": "paper", "min_score": 60, "min_rr": 2.0},
     )
 
 
@@ -442,7 +442,7 @@ class RuleEngineQATests(ScratchDBTest):
         decision = self._evaluate()
         self.assertTrue(decision.allowed, decision.reasons)
         self.assertTrue(all(check.ok for check in decision.checks))
-        self.assertEqual(decision.computed["min_score"], 85.0)
+        self.assertEqual(decision.computed["min_score"], 60.0)
         self.assertEqual(decision.computed["min_rr"], 2.0)
 
     def test_stale_data_is_rejected(self):
@@ -469,11 +469,11 @@ class RuleEngineQATests(ScratchDBTest):
                 self.assertFalse(decision.allowed)
                 self.assertFalse(self._checks(decision)["data_freshness"].ok)
 
-    def test_score_below_85_is_rejected(self):
-        decision = self._evaluate(make_candidate(score=84.9))
+    def test_score_below_60_is_rejected(self):
+        decision = self._evaluate(make_candidate(score=59.9))
         self.assertFalse(decision.allowed)
         self.assertFalse(self._checks(decision)["entry_quality"].ok)
-        self.assertIn("84.9", " ".join(decision.reasons))
+        self.assertIn("59.9", " ".join(decision.reasons))
 
     def test_risk_reward_below_2_is_rejected(self):
         decision = self._evaluate(make_candidate(risk_reward=1.99))
@@ -511,9 +511,9 @@ class RuleEngineQATests(ScratchDBTest):
         self.override_cfg(("entry", "min_score"), 40)
         self.override_cfg(("entry", "minimum_score"), 40)
         self.override_cfg(("entry", "min_risk_reward"), 1.0)
-        low_score = self._evaluate(make_candidate(score=84.0))
+        low_score = self._evaluate(make_candidate(score=59.0))
         low_rr = self._evaluate(make_candidate(risk_reward=1.5))
-        self.assertEqual(low_score.computed["min_score"], 85.0)
+        self.assertEqual(low_score.computed["min_score"], 60.0)
         self.assertEqual(low_rr.computed["min_rr"], 2.0)
         self.assertFalse(low_score.allowed)
         self.assertFalse(low_rr.allowed)
@@ -888,7 +888,7 @@ class EvolutionQATests(ScratchDBTest):
     ABSOLUTE_UNSAFE = (
         ("app.mode=live", ("app", "mode"), "live"),
         ("engine.execution_mode=live", ("engine", "execution_mode"), "live"),
-        ("entry.minimum_score=84", ("entry", "minimum_score"), 84),
+        ("entry.minimum_score=59", ("entry", "minimum_score"), 59),
         ("entry.min_risk_reward=1.9", ("entry", "min_risk_reward"), 1.9),
         ("entry.risk.minimum_risk_reward=1.5",
          ("entry", "risk", "minimum_risk_reward"), 1.5),
@@ -915,7 +915,7 @@ class EvolutionQATests(ScratchDBTest):
         ("account.max_positions", ("account", "max_positions"), 20),
         ("engine.enabled", ("engine", "enabled"), False),
         ("safety.paper_trading_only", ("safety", "paper_trading_only"), False),
-        ("entry.minimum_score", ("entry", "minimum_score"), 80),
+        ("entry.minimum_score", ("entry", "minimum_score"), 59),
         ("entry.min_risk_reward", ("entry", "min_risk_reward"), 1.5),
         ("costs.slippage_pct", ("costs", "slippage_pct"), 0.0),
         ("engine.entry_start_time", ("engine", "entry_start_time"), "00:00"),
@@ -954,7 +954,7 @@ class EvolutionQATests(ScratchDBTest):
                 self.assertTrue(set(candidate["changed"]).issubset(allowed))
                 self.assertEqual(str(data["app"]["mode"]).lower(), "paper")
                 self.assertEqual(str(data["engine"]["execution_mode"]).lower(), "paper")
-                self.assertEqual(float(data["entry"]["minimum_score"]), 85.0)
+                self.assertEqual(float(data["entry"]["minimum_score"]), 60.0)
                 for path in (("entry", "min_risk_reward"),
                              ("entry", "risk", "minimum_risk_reward"),
                              ("risk", "minimum_risk_reward"),

@@ -245,7 +245,7 @@ entry:
   enabled: true
   direction: "long"
 
-  minimum_score: 85
+  minimum_score: 60
   min_risk_reward: 2.0
   required_confirmations: 5
 
@@ -344,14 +344,14 @@ scoring:
   maximum_score: 100
   normalize_score: false
 
-  minimum_trade_score: 85
+  minimum_trade_score: 60
 
   thresholds:
     ignore: 50
     watchlist: 50
     qualified: 65
     strong: 75
-    entry: 85
+    entry: 60
     excellent: 90
     exceptional: 95
 

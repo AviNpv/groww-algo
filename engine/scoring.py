@@ -249,7 +249,7 @@ def score_symbol(symbol: str, quote: dict, daily: pd.DataFrame, intra: pd.DataFr
     confirmations = sum(1 for name in ("trend", "momentum", "pattern", "volume", "quality")
                         if buckets[name]["pct"] >= 50)
     entry_at = float(_rule(params, "scoring", "thresholds", "entry",
-                           default=cfg("entry", "min_score", default=85)))
+                           default=cfg("entry", "min_score", default=60)))
     qualified_at = float(_rule(params, "scoring", "thresholds", "qualified", default=65))
     watch_at = float(_rule(params, "scoring", "thresholds", "watchlist", default=55))
     min_conf = int(_rule(params, "entry", "required_confirmations",

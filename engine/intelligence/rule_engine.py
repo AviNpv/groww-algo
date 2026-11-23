@@ -158,8 +158,8 @@ class RuleEngine:
             )
 
         # (d) score / confirmations / status ----------------------------------
-        min_score = max(85.0, _num(_cfg("entry", "min_score",
-                                        default=_cfg("entry", "minimum_score", default=85)), 85.0))
+        min_score = max(60.0, _num(_cfg("entry", "min_score",
+                                        default=_cfg("entry", "minimum_score", default=60)), 60.0))
         min_confirmations = max(
             5, int(_num(_cfg("entry", "min_confirmations",
                              default=_cfg("entry", "required_confirmations", default=5)), 5)),

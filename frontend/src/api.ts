@@ -12,6 +12,7 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.API_BASE_URL || 'https://groww-algo.onrender.com'
 
 import type {
+  AgentChatSession,
   CalendarResponse,
   ChartResponse,
   ConfigParseResponse,
@@ -156,6 +157,14 @@ export const api = {
     request<IntelligenceList<IntelligenceExecutionRow>>(`/intelligence/executions?limit=${limit}`),
   intelligenceVersions: (limit = 30) =>
     request<IntelligenceList<IntelligenceVersionRow>>(`/intelligence/versions?limit=${limit}`),
+  /** Start one live advisory run; the six agents stream over SSE. */
+  startAgentChat: (symbol: string) =>
+    request<AgentChatSession>('/intelligence/chat/start', {
+      method: 'POST',
+      body: JSON.stringify({ symbol }),
+    }),
+  agentChatStreamUrl: (sessionId: string) =>
+    `${API_BASE}${BACKEND_API_PREFIX}/intelligence/chat/${encodeURIComponent(sessionId)}/stream`,
   setIntelligenceMode: (enabled: boolean, token = '') =>
     adminPost('/intelligence/mode', token, { enabled }),
   runEvolution: (token = '') => adminPost('/intelligence/evolution/run', token),

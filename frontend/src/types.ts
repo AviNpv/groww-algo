@@ -615,6 +615,71 @@ export interface IntelligenceActionResult extends IntelRecord {
   [key: string]: unknown
 }
 
+/** One live agent-chat event delivered over Server-Sent Events. */
+export interface AgentChatEvent extends IntelRecord {
+  type: string
+  seq?: number
+  ts?: string
+  symbol?: string
+  message?: string
+  agent_id?: string
+  agent_name?: string
+  status?: string
+  recommendation?: string
+  confidence?: number
+  uncertainty?: number
+  summary?: string
+  evidence_count?: number
+  critical_objections?: string[]
+  model?: string
+  decision?: string
+  consensus_score?: number
+  rationale?: string
+  reports?: number
+  ok_reports?: number
+  support?: number
+  oppose?: number
+  abstain?: number
+  unresolved_critical?: number
+  allowed?: boolean
+  checks?: Array<{ name?: string; ok?: boolean; detail?: string }>
+  reasons?: string[]
+  action?: string
+  model_ok?: boolean
+  reject_reasons?: string[]
+  paper_only?: boolean
+  decision_id?: string
+  ok?: boolean
+  price?: number
+  score?: number
+  source?: string
+  delayed?: boolean
+  quote_age_sec?: number | null
+  scanned?: number
+  confirmations?: number
+  stop?: number | null
+  target?: number | null
+  qty?: number | null
+  risk_reward?: number | null
+  data_stale?: boolean
+  market_open?: boolean
+  in_entry_window?: boolean
+  now_ist?: string
+  equity?: number
+  positions?: number
+  rejections?: string[]
+  feed?: { active?: string; delayed?: boolean | null; groww_ok?: boolean; message?: string }
+}
+
+export interface AgentChatSession {
+  ok: boolean
+  session_id: string
+  symbol: string
+  paper_only: boolean
+  stream: string
+  started_at: string
+}
+
 export interface PortfolioResponse {
   ok: boolean
   errors: Record<string, string>

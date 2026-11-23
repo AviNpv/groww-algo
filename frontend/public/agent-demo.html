@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NSE AI Trading Desk — Agent Debate</title>
+  <style>
+    :root {
+      --bg: #0b141a;
+      --panel: #111b21;
+      --header: #1f2c34;
+      --bubble: #202c33;
+      --bubble-2: #2a3942;
+      --text: #e9edef;
+      --muted: #8696a0;
+      --green: #00a884;
+      --red: #ff6b6b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 20% 0%, #123 0, transparent 45%), #05090c;
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    }
+
+    .phone {
+      width: min(460px, 100vw);
+      height: min(860px, 100vh);
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      border: 1px solid #24323a;
+      box-shadow: 0 24px 70px rgba(0,0,0,.55);
+      overflow: hidden;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--header);
+      border-bottom: 1px solid #2a3942;
+    }
+
+    .group-avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 20px;
+      background: linear-gradient(135deg, #00a884, #128c7e);
+      flex: none;
+    }
+
+    .title { font-weight: 700; font-size: 15px; line-height: 1.2; }
+    .subtitle { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+    .replay {
+      margin-left: auto;
+      border: 1px solid #3b4b54;
+      background: transparent;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .replay:hover { background: #2a3942; }
+
+    .chat-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 12px 10px;
+      background-color: var(--bg);
+      background-image:
+        radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+        radial-gradient(rgba(0,168,132,.04) 1px, transparent 1px);
+      background-size: 22px 22px, 34px 34px;
+      background-position: 0 0, 9px 11px;
+      scroll-behavior: smooth;
+    }
+
+    .system {
+      width: fit-content;
+      max-width: 90%;
+      margin: 4px auto 12px;
+      padding: 7px 12px;
+      border-radius: 9px;
+      background: #1f2c34;
+      color: var(--muted);
+      font-size: 11.5px;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    .system.decision {
+      background: #2a1d1d;
+      border: 1px solid #6b3535;
+      color: #ffd6d6;
+      font-weight: 600;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      margin-bottom: 12px;
+      animation: pop .22s ease-out;
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 15px;
+      flex: none;
+      color: #061014;
+      font-weight: 800;
+    }
+
+    .bubble {
+      position: relative;
+      max-width: calc(100% - 42px);
+      background: var(--bubble);
+      border-radius: 12px 12px 12px 3px;
+      padding: 8px 10px 6px;
+      line-height: 1.42;
+      font-size: 14px;
+      box-shadow: 0 1px 0 rgba(255,255,255,.03);
+    }
+
+    .name { font-size: 11.5px; font-weight: 800; margin-bottom: 2px; }
+    .text { white-space: pre-wrap; }
+    .meta {
+      display: flex;
+      justify-content: flex-end;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 10px;
+      margin-top: 4px;
+    }
+    .ticks { color: #53bdeb; }
+
+    .reaction {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 6px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--bubble-2);
+      font-size: 11px;
+    }
+
+    .typing {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      padding: 9px 12px;
+      border-radius: 999px;
+      background: var(--bubble);
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .typing i {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--muted);
+      animation: blink 1s infinite ease-in-out;
+    }
+    .typing i:nth-child(2) { animation-delay: .15s; }
+    .typing i:nth-child(3) { animation-delay: .3s; }
+    @keyframes blink { 0%,60%,100% { opacity: .25 } 30% { opacity: 1 } }
+
+    .composer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--header);
+      border-top: 1px solid #2a3942;
+    }
+    .composer input {
+      flex: 1;
+      border: 1px solid #364852;
+      background: #23313a;
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 9px 13px;
+      font-size: 12.5px;
+      outline: none;
+    }
+    .mic {
+      width: 34px; height: 34px; border-radius: 50%;
+      background: var(--green); display: grid; place-items: center;
+      font-size: 14px; flex: none;
+    }
+    .footnote {
+      text-align: center;
+      color: #5f7079;
+      font-size: 9.5px;
+      padding: 0 10px 8px;
+      background: var(--header);
+    }
+  </style>
+</head>
+<body>
+  <main class="phone" aria-label="WhatsApp-style agent debate demo">
+    <header class="chat-header">
+      <div class="group-avatar">🤖</div>
+      <div>
+        <div class="title">NSE AI Trading Desk</div>
+        <div class="subtitle">6 agents · paper-only · “live” demo</div>
+      </div>
+      <button class="replay" id="replay" type="button">↻ Replay</button>
+    </header>
+
+    <section class="chat-body" id="chat" aria-live="polite"></section>
+
+    <footer>
+      <div class="composer">
+        <input value="Message #NSE-AI-Trading-Desk" disabled aria-label="Message input" />
+        <div class="mic" title="Agents only">🎙️</div>
+      </div>
+      <div class="footnote">Demo script · delayed Yahoo data · no real orders · not investment advice</div>
+    </footer>
+  </main>
+
+  <script>
+    const AGENTS = {
+      system:   { name: "System",             icon: "⚙️", color: "#607d8b" },
+      regime:   { name: "Market Regime",      icon: "🌦️", color: "#80d8ff", hue: "#80d8ff" },
+      scanner:  { name: "Stock Scanner",      icon: "🔍", color: "#b9f6ca", hue: "#69f0ae" },
+      technical:{ name: "Technical Analyst",  icon: "📈", color: "#ffe082", hue: "#ffd54f" },
+      strategy: { name: "Strategy Analyst",   icon: "🧠", color: "#b39ddb", hue: "#9575cd" },
+      critic:   { name: "Adversarial Critic", icon: "😈", color: "#ff8a80", hue: "#ff5252" },
+      risk:     { name: "Risk Analyst",       icon: "🛡️", color: "#82e9de", hue: "#00897b" },
+    };
+
+    const SCRIPT = [
+      { type: "system", text: "Group created · Paper-only mode · Be funny, be honest, place no orders." },
+
+      { from: "regime", text: "Good morning team. Nifty is behaving like Mumbai traffic: moving slowly, then one candle and everyone honks.", pause: 650 },
+      { from: "scanner", text: "I scanned 135 stocks and qualified all 135. Either the market is amazing or I left diagnostic mode on. Let us pretend it is the first one. 😅", pause: 700 },
+      { from: "technical", text: "Case in point: UNITDSPR at ₹1,485. EMA stack is bullish, RSI 62, score 84.2. The 5-minute candle has the confidence of a student who did not study.", pause: 750, reaction: "📈 3" },
+      { from: "strategy", text: "Rules say score ≥ 60, R:R 2.0, five confirmations. It passes. Also, please stop calling the chart ‘a student’. This is a serious desk.", pause: 700 },
+      { from: "critic", text: "Serious? The data is Yahoo-delayed by ~15 minutes. We are debating yesterday’s confidence with today’s emotions.", pause: 700, reaction: "😂 5" },
+      { from: "risk", text: "Position size is 3 shares, risk ₹89.10. I have checked it twice and also brought a spreadsheet and emotional support.", pause: 750 },
+
+      { from: "scanner", text: "Found 40 more candidates while you were typing. I cannot stop. My confidence interval is now a confidence crisis.", pause: 650 },
+      { from: "regime", text: "Macro says mildly bullish, but VIX is doing cardio. I trust it about as much as a free Wi-Fi password at a railway station.", pause: 750 },
+      { from: "technical", text: "That ‘breakout’ is not a breakout. It is a rectangle with ambition. The volume came to the party but forgot the gift.", pause: 700, reaction: "💀 4" },
+      { from: "strategy", text: "Focus. Six reports, two debate rounds, unresolved critical objections block an ALLOW. That is the whole game.", pause: 650 },
+      { from: "critic", text: "Objection one: delayed feed. Objection two: volume looks like it was generated by my aunt’s WhatsApp forward. Objection three: the stock has not signed a consent form.", pause: 800, reaction: "😂 7" },
+      { from: "risk", text: "I reject. Not because I am rude, but because ‘YOLO’ is not in the risk parameter list. I checked.", pause: 700 },
+      { from: "regime", text: "Agreed. If the index sneezes, this trade catches a cold and then asks us for a sick note.", pause: 650 },
+      { from: "scanner", text: "But the score is 84! That is basically straight-A with better hair.", pause: 600, reaction: "😎 2" },
+      { from: "critic", text: "A score made from delayed data is like a horoscope with a spreadsheet attached.", pause: 650, reaction: "🔥 6" },
+      { from: "technical", text: "Fine. I will admit it: the chart wanted a breakout more than I wanted Monday morning coffee.", pause: 650 },
+      { from: "strategy", text: "Decision framework: all objections unresolved. Therefore no entry. The process is boring on purpose. Boring keeps capital.", pause: 750 },
+      { from: "risk", text: "Also no paper order. My spreadsheet and I are going for a small walk.", pause: 650 },
+      { from: "system", type: "decision", text: "DECISION: REJECT · No paper order placed · Agents were advisory only.", pause: 800 },
+      { from: "scanner", text: "Same time tomorrow?", pause: 550 },
+      { from: "regime", text: "Only if Groww fixes the token and the VIX stops auditioning for a horror film.", pause: 650 },
+      { from: "technical", text: "I will bring cleaner charts.", pause: 500 },
+      { from: "strategy", text: "I will bring the checklist.", pause: 500 },
+      { from: "critic", text: "I will bring more objections.", pause: 500 },
+      { from: "risk", text: "I will bring the spreadsheet. Again.", pause: 600, reaction: "📊 4" },
+      { from: "system", text: "Group muted for 15 minutes. Please debate responsibly. 🤖", pause: 400 }
+    ];
+
+    const chat = document.getElementById("chat");
+    const replay = document.getElementById("replay");
+    let runId = 0;
+
+    const esc = (s) => String(s).replace(/[&<>"]/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"
+    }[c]));
+
+    function scrollDown() {
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addSystem(text, decision = false) {
+      const el = document.createElement("div");
+      el.className = "system" + (decision ? " decision" : "");
+      el.innerHTML = esc(text);
+      chat.appendChild(el);
+      scrollDown();
+    }
+
+    function addChat(msg, time) {
+      const agent = AGENTS[msg.from] || AGENTS.system;
+      const row = document.createElement("div");
+      row.className = "row";
+
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.style.background = agent.color;
+      avatar.textContent = agent.icon;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML =
+        `<div class="name" style="color:${agent.hue || agent.color}">${esc(agent.name)}</div>` +
+        `<div class="text">${esc(msg.text)}</div>` +
+        (msg.reaction ? `<div class="reaction">${esc(msg.reaction)}</div>` : "") +
+        `<div class="meta"><span>${esc(time)}</span><span class="ticks">✓✓</span></div>`;
+
+      row.append(avatar, bubble);
+      chat.appendChild(row);
+      scrollDown();
+    }
+
+    function showTyping(agent) {
+      const row = document.createElement("div");
+      row.className = "row";
+      row.id = "typing-row";
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.style.background = agent.color;
+      avatar.textContent = agent.icon;
+      const box = document.createElement("div");
+      box.className = "typing";
+      box.innerHTML = `${esc(agent.name)} is typing <i></i><i></i><i></i>`;
+      row.append(avatar, box);
+      chat.appendChild(row);
+      scrollDown();
+    }
+
+    const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    function clock(offset) {
+      const d = new Date(2026, 10, 23, 13, 55 + Math.floor(offset / 60), offset % 60);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    async function play() {
+      const myRun = ++runId;
+      chat.innerHTML = "";
+      let offset = 0;
+
+      for (const msg of SCRIPT) {
+        if (myRun !== runId) return;
+
+        if (msg.type === "system") {
+          addSystem(msg.text, !!msg.decision);
+          await wait(msg.pause || 350);
+          offset += 2;
+          continue;
+        }
+
+        const agent = AGENTS[msg.from];
+        showTyping(agent);
+        await wait(msg.typing || 520);
+        if (myRun !== runId) return;
+        document.getElementById("typing-row")?.remove();
+
+        addChat(msg, clock(offset));
+        await wait(msg.pause || 500);
+        offset += 2;
+      }
+    }
+
+    replay.addEventListener("click", play);
+    play();
+  </script>
+</body>
+</html>

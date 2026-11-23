@@ -1216,6 +1216,7 @@ class PaperOnlyQATests(ScratchDBTest):
             "/api/intelligence/evolution/run",
             "/api/intelligence/strategy/{version_id}/promote",
             "/api/intelligence/strategy/rollback",
+            "/api/intelligence/chat/start",
         })
         for route in router.routes:
             path = route.path.lower()

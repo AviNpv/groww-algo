@@ -13,6 +13,7 @@ import secrets
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
@@ -41,6 +42,10 @@ _SCHEDULER_KEYS = ("research_24x7", "holidays_file", "market_sessions_only")
 
 class RollbackRequest(BaseModel):
     version_id: str | None = None
+
+
+class AgentChatRequest(BaseModel):
+    symbol: str
 
 
 def _config():
@@ -262,6 +267,54 @@ def intelligence_debate(symbol: str) -> dict:
     debate = _scrub(_store().latest_debate(symbol))
     return {"ts": _ts(), "symbol": symbol, "debate": debate,
             "found": debate is not None}
+
+
+# ----------------------------------------------------------------------
+# live agent group chat (read-only, paper-only, one run at a time)
+# ----------------------------------------------------------------------
+@router.post("/chat/start")
+def intelligence_chat_start(req: AgentChatRequest) -> dict:
+    """Start one advisory run and return its event-stream location."""
+    from engine.intelligence.chat import SERVICE, ChatUnavailable
+    try:
+        return SERVICE.start(req.symbol)
+    except ChatUnavailable as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+
+@router.get("/chat/status")
+def intelligence_chat_status() -> dict:
+    from engine.intelligence.chat import SERVICE
+    return _scrub(SERVICE.status())
+
+
+@router.get("/chat/{session_id}/stream")
+def intelligence_chat_stream(session_id: str, request: Request) -> StreamingResponse:
+    """Server-Sent Events: agent starts and reports appear as they happen."""
+    from engine.intelligence.chat import SERVICE, ChatUnavailable, sse_frames
+    if not re.fullmatch(r"chat-[0-9a-f]{12}", session_id or ""):
+        raise HTTPException(status_code=400, detail="invalid session id")
+    try:
+        session = SERVICE.get(session_id)
+    except ChatUnavailable as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    after = 0
+    raw = request.headers.get("last-event-id") or request.query_params.get("after") or 0
+    try:
+        after = max(0, int(raw))
+    except (TypeError, ValueError):
+        after = 0
+
+    return StreamingResponse(
+        sse_frames(session, after=after),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/usage")

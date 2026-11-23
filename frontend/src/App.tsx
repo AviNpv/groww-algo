@@ -20,8 +20,9 @@ import SymbolDrawer from './components/SymbolDrawer'
 import SettingsPanel from './components/SettingsPanel'
 import GrowwPortfolio from './components/GrowwPortfolio'
 import IntelligencePanel from './components/IntelligencePanel'
+import AgentChat from './components/AgentChat'
 
-type Tab = 'overview' | 'scanner' | 'chart' | 'positions' | 'trades' | 'portfolio' | 'intelligence' | 'settings'
+type Tab = 'overview' | 'scanner' | 'chart' | 'positions' | 'trades' | 'portfolio' | 'intelligence' | 'agents' | 'settings'
 
 /** Dashboard polling interval - the whole screen refreshes once per second. */
 const LIVE_REFRESH_MS = 1000
@@ -34,6 +35,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'trades', label: 'Trades' },
   { id: 'portfolio', label: 'Groww Portfolio' },
   { id: 'intelligence', label: 'Intelligence' },
+  { id: 'agents', label: 'Agent Chat' },
   { id: 'settings', label: 'Settings' },
 ]
 
@@ -679,6 +681,8 @@ export default function App() {
         {tab === 'portfolio' && <GrowwPortfolio />}
 
         {tab === 'intelligence' && <IntelligencePanel />}
+
+        {tab === 'agents' && <AgentChat />}
 
         {tab === 'settings' && (
           <SettingsPanel

@@ -6,6 +6,7 @@ decision, and never raises into the engine loop.
 """
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 from engine.intelligence import config as ai_config
@@ -78,6 +79,26 @@ def _default_agents():
         return None
 
 
+def _emit(on_event, event: dict) -> None:
+    """Observability only: a broken listener must never affect a decision."""
+    if on_event is None:
+        return
+    try:
+        on_event(dict(event))
+    except Exception:
+        pass
+
+
+def _accepts_on_event(runner) -> bool:
+    try:
+        params = inspect.signature(runner).parameters
+    except (TypeError, ValueError):
+        return False
+    return "on_event" in params or any(
+        param.kind is inspect.Parameter.VAR_KEYWORD for param in params.values()
+    )
+
+
 class Orchestrator:
     """Evaluate one candidate signal into a persisted :class:`TradeDecision`."""
 
@@ -101,18 +122,20 @@ class Orchestrator:
             return None
 
     def _run_agents(self, snapshot: MarketSnapshot,
-                    candidate: CandidateSnapshot) -> list[AgentReport]:
+                    candidate: CandidateSnapshot,
+                    on_event=None) -> list[AgentReport]:
         runner_obj = self.agents if self.agents is not None else _default_agents()
         if runner_obj is None:
             return []
         runner = getattr(runner_obj, "run", None) or getattr(runner_obj, "run_agents", None)
         if not callable(runner):
             return []
+        kwargs = {"on_event": on_event} if _accepts_on_event(runner) else {}
         try:
-            result = runner(snapshot, [candidate])
+            result = runner(snapshot, [candidate], **kwargs)
         except TypeError:
             try:
-                result = runner(snapshot=snapshot, candidates=[candidate])
+                result = runner(snapshot=snapshot, candidates=[candidate], **kwargs)
             except Exception:
                 return []
         except Exception:
@@ -231,7 +254,8 @@ class Orchestrator:
     # public API
     # ------------------------------------------------------------------
     def evaluate(self, signal: dict, snapshot: MarketSnapshot | None = None,
-                 held: set[str] | None = None) -> TradeDecision:
+                 held: set[str] | None = None,
+                 on_event=None) -> TradeDecision:
         signal = signal if isinstance(signal, dict) else {}
         symbol = str(signal.get("symbol") or "")
         snap = snapshot if isinstance(snapshot, MarketSnapshot) else None
@@ -268,13 +292,43 @@ class Orchestrator:
                         model_ok=False, reject_reasons=reject_reasons,
                     )
                 else:
-                    reports = self._run_agents(snap, candidate)
+                    reports = self._run_agents(snap, candidate, on_event=on_event)
                     model_ok = bool(reports) and all(r.status == "ok" for r in reports)
                     debate = self._run_debate(reports, symbol, snap)
                     rules = self._run_rules(symbol, snap, held)
                     unresolved = list(debate.unresolved_critical) if debate else []
                     flagged = [r.agent_id for r in reports if r.has_critical_objection]
                     reject_reasons: list[str] = []
+
+                    _emit(on_event, {
+                        "type": "debate",
+                        "symbol": symbol,
+                        "decision": debate.decision if debate else "unavailable",
+                        "consensus_score": (round(float(debate.consensus_score), 4)
+                                            if debate else None),
+                        "rationale": ((debate.rationale or "")[:700]
+                                      if debate else "debate unavailable"),
+                        "reports": len(reports),
+                        "ok_reports": sum(1 for r in reports if r.status == "ok"),
+                        "support": sum(1 for r in reports if r.recommendation == "support"),
+                        "oppose": sum(1 for r in reports if r.recommendation == "oppose"),
+                        "abstain": sum(1 for r in reports if r.recommendation == "abstain"),
+                        "unresolved_critical": len(unresolved),
+                    })
+                    _emit(on_event, {
+                        "type": "rules",
+                        "symbol": symbol,
+                        "allowed": bool(rules.allowed) if rules else False,
+                        "checks": [
+                            {"name": check.name, "ok": bool(check.ok),
+                             "detail": (check.detail or "")[:220]}
+                            for check in ((rules.checks if rules else []) or [])
+                        ][:16],
+                        "reasons": [
+                            str(reason)[:300]
+                            for reason in ((rules.reasons if rules else []) or [])
+                        ][:12],
+                    })
 
                     if not model_ok:
                         if not reports:
@@ -347,12 +401,14 @@ class Orchestrator:
         return decision
 
     def evaluate_all(self, snapshot: MarketSnapshot | None = None,
-                     held: set[str] | None = None) -> list[TradeDecision]:
+                     held: set[str] | None = None,
+                     on_event=None) -> list[TradeDecision]:
         """Convenience batch evaluation of every candidate in a snapshot."""
         snap = snapshot if isinstance(snapshot, MarketSnapshot) else None
         if snap is None:
             snap = build_snapshot(scan_result=self._last_scan(), held=held)
-        return [self.evaluate({"symbol": c.symbol}, snapshot=snap, held=held)
+        return [self.evaluate({"symbol": c.symbol}, snapshot=snap, held=held,
+                              on_event=on_event)
                 for c in snap.candidates]
 
 

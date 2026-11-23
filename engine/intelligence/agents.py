@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import threading
+from typing import Callable
 
 from engine.intelligence import prompts
 from engine.intelligence import storage
@@ -21,6 +22,16 @@ def _timestamp() -> str:
         return now_ist().isoformat(timespec="seconds")
     except Exception:  # pragma: no cover - defensive only
         return dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+
+
+def _notify(on_event: Callable[[dict], None] | None, event: dict) -> None:
+    """Send one observability event; a broken listener must never break a run."""
+    if on_event is None:
+        return
+    try:
+        on_event(dict(event))
+    except Exception:
+        pass
 
 
 def error_report(
@@ -77,14 +88,43 @@ class RuntimeAgents:
         self,
         snapshot: MarketSnapshot,
         candidates: list[CandidateSnapshot] | None = None,
+        on_event: Callable[[dict], None] | None = None,
     ) -> list[AgentReport]:
-        """Return six reports per candidate, or six global reports if none."""
+        """Return six reports per candidate, or six global reports if none.
+
+        ``on_event`` is an optional observability hook used by the live chat.
+        It never changes the analysis and any hook failure is ignored.
+        """
         targets: list[CandidateSnapshot | None] = list(candidates) if candidates else [None]
         reports: list[AgentReport] = []
         for candidate in targets:
             symbol = candidate.symbol if candidate is not None else None
             for agent_id in prompts.AGENT_IDS:
-                reports.append(self._run_one(snapshot, candidate, agent_id, symbol))
+                _notify(on_event, {
+                    "type": "agent_start",
+                    "agent_id": agent_id,
+                    "agent_name": prompts.AGENT_NAMES.get(agent_id, agent_id),
+                    "symbol": symbol,
+                })
+                report = self._run_one(snapshot, candidate, agent_id, symbol)
+                reports.append(report)
+                _notify(on_event, {
+                    "type": "agent_report",
+                    "agent_id": report.agent_id,
+                    "agent_name": report.agent_name,
+                    "symbol": symbol,
+                    "status": report.status,
+                    "recommendation": report.recommendation,
+                    "confidence": report.confidence,
+                    "uncertainty": report.uncertainty,
+                    "summary": report.summary,
+                    "evidence_count": len(report.evidence),
+                    "critical_objections": [
+                        objection.message for objection in report.objections
+                        if objection.severity == "critical"
+                    ][:4],
+                    "model": report.model,
+                })
         return reports
 
     # ----------------------------------------------------------------- internals
@@ -169,6 +209,7 @@ _DEFAULT_LOCK = threading.Lock()
 def run(
     snapshot: MarketSnapshot,
     candidates: list[CandidateSnapshot] | None = None,
+    on_event: Callable[[dict], None] | None = None,
 ) -> list[AgentReport]:
     """Module-level convenience wrapper for callers using the default adapter."""
     global _DEFAULT_RUNNER
@@ -176,4 +217,4 @@ def run(
         with _DEFAULT_LOCK:
             if _DEFAULT_RUNNER is None:
                 _DEFAULT_RUNNER = RuntimeAgents()
-    return _DEFAULT_RUNNER.run(snapshot, candidates)
+    return _DEFAULT_RUNNER.run(snapshot, candidates, on_event=on_event)

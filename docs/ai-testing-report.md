@@ -413,9 +413,6 @@ admin gating, `require_for_entries`, `fail_closed`, `auto_promote: false`,
 R:R 2.0, square-off at 15:20 IST, and the LONG/SHORT configuration. Regression
 fixtures were updated together: `test_negative_score_is_rejected` replaces the
 old 85/60 score-floor test, and `test_delayed_feed_accepted_when_groww_gate_disabled`
-covers the temporary data path. The profile also temporarily throttles outbound
-model calls to 2/minute with 5 retries because the first all-agent run hit the
-free-tier provider’s HTTP 429 limit after one successful report. Final
-verification: `compileall` exit 0 and full discovery suite **74 tests, OK**. This
-profile is explicitly temporary and must be reverted after the operator’s live
-check.
+covers the temporary data path. Final verification: `compileall` exit 0 and full
+discovery suite **74 tests, OK**. This profile is explicitly temporary and must
+be reverted after the operator’s live check.

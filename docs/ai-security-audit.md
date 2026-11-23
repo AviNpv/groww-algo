@@ -343,7 +343,6 @@ Groww-only fresh-data gate was temporarily relaxed so delayed Yahoo data can
 reach the six-agent review. This weakens signal quality but adds no order
 capability: paper-only execution, R:R 2.0, capital/risk caps, leverage,
 square-off, admin gating, `require_for_entries`, `fail_closed`,
-`auto_promote: false` and `allow_paid: false` are unchanged. Outbound model calls
-are temporarily throttled to 2/minute to avoid the free-tier HTTP 429 limit. The
-profile must be reverted after the operator’s live check. Final verification:
-`compileall` exit 0 and full discovery suite **74 tests, OK**.
+`auto_promote: false` and `allow_paid: false` are unchanged. The profile must be
+reverted after the operator’s live check. Final verification: `compileall` exit 0
+and full discovery suite **74 tests, OK**.

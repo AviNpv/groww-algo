@@ -266,7 +266,7 @@ def _normalize(data: dict) -> dict:
     _alias(scoring, "max_score", _first(scoring.get("maximum_score"), 100))
     _alias(scoring, "watchlist_score", _first(thresholds.get("watchlist"), 55))
     _alias(scoring, "qualified_score", _first(thresholds.get("qualified"), 65))
-    _alias(scoring, "entry_score", _first(thresholds.get("entry"), scoring.get("minimum_trade_score"), 0))
+    _alias(scoring, "entry_score", _first(thresholds.get("entry"), scoring.get("minimum_trade_score"), 60))
     cfg["scoring"] = scoring
 
     quality = _dict(cfg.get("data_quality"))

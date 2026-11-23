@@ -40,9 +40,9 @@ engine:
   allow_long: true
   allow_short: true
 
-  candle_confirmation: false
-  use_closed_candles_only: false
-  required_confirmations: 0
+  candle_confirmation: true
+  use_closed_candles_only: true
+  required_confirmations: 5
 
 # ------------------------------------------------------------
 # 2. DATA SOURCES
@@ -51,21 +51,21 @@ engine:
 data:
   primary_source: "groww"
   secondary_source: "yahoo_finance"
-  source_mode: "yahoo"
+  source_mode: "auto"
 
   groww:
     enabled: true
     priority: 1
     use_for_quotes: true
-    use_for_entry_confirmation: false
-    use_for_execution_price: false
+    use_for_entry_confirmation: true
+    use_for_execution_price: true
 
   yahoo_finance:
     enabled: true
     priority: 2
     use_for_scanning: true
-    use_for_entry_confirmation: true
-    use_for_execution_price: true
+    use_for_entry_confirmation: false
+    use_for_execution_price: false
 
   fallback:
     enabled: true
@@ -75,15 +75,15 @@ data:
     on_invalid_data: true
 
     yahoo_allowed_for_scanning: true
-    groww_confirmation_required: false
+    groww_confirmation_required: true
 
   validation:
-    max_quote_age_seconds: 86400
-    reject_stale_data: false
-    reject_missing_ohlcv: false
-    reject_invalid_prices: false
-    reject_zero_volume: false
-    reject_duplicate_candles: false
+    max_quote_age_seconds: 10
+    reject_stale_data: true
+    reject_missing_ohlcv: true
+    reject_invalid_prices: true
+    reject_zero_volume: true
+    reject_duplicate_candles: true
 
 # ------------------------------------------------------------
 # 3. ACCOUNT AND CAPITAL MANAGEMENT
@@ -245,42 +245,42 @@ entry:
   enabled: true
   direction: "long"
 
-  minimum_score: 0
+  minimum_score: 60
   min_risk_reward: 2.0
-  required_confirmations: 0
+  required_confirmations: 5
 
   trend:
-    ema_alignment: false
+    ema_alignment: true
     condition: "EMA20 > EMA50 > EMA200"
-    require_5m_confirmation: false
-    require_15m_confirmation: false
-    price_above_vwap: false
+    require_5m_confirmation: true
+    require_15m_confirmation: true
+    price_above_vwap: true
 
   momentum:
-    rsi_min: 0
-    rsi_max: 100
-    adx_min: 0
-    macd_bullish: false
+    rsi_min: 55
+    rsi_max: 72
+    adx_min: 20
+    macd_bullish: true
 
   volume:
-    relative_volume_min: 0
+    relative_volume_min: 1.5
     use_time_of_day_average: true
-    require_volume_confirmation: false
+    require_volume_confirmation: true
 
   price_action:
-    require_breakout_or_retest: false
+    require_breakout_or_retest: true
     breakout_lookback: 20
-    require_bullish_candle: false
-    use_closed_candle: false
+    require_bullish_candle: true
+    use_closed_candle: true
 
   volatility:
-    minimum_atr_pct: 0
-    maximum_atr_pct: 100
+    minimum_atr_pct: 0.4
+    maximum_atr_pct: 3.5
 
   quality:
-    require_liquidity: false
-    require_acceptable_spread: false
-    require_relative_strength: false
+    require_liquidity: true
+    require_acceptable_spread: true
+    require_relative_strength: true
 
   risk:
     minimum_risk_reward: 2.0
@@ -344,14 +344,14 @@ scoring:
   maximum_score: 100
   normalize_score: false
 
-  minimum_trade_score: 0
+  minimum_trade_score: 60
 
   thresholds:
     ignore: 50
     watchlist: 50
     qualified: 65
     strong: 75
-    entry: 0
+    entry: 60
     excellent: 90
     exceptional: 95
 
@@ -409,21 +409,21 @@ scoring:
       atr_suitability: 4
 
   rules:
-    require_all_mandatory_gates: false
+    require_all_mandatory_gates: true
     cap_category_score_at_weight: true
-    reject_missing_indicators: false
+    reject_missing_indicators: true
     no_double_counting: true
     separate_long_short_scoring: true
-    reject_score_below_minimum: false
+    reject_score_below_minimum: true
 
   mandatory_gates:
-    trend: false
-    momentum: false
-    volume: false
-    price_pattern: false
-    market_filter: false
-    risk_reward: false
-    groww_confirmation: false
+    trend: true
+    momentum: true
+    volume: true
+    price_pattern: true
+    market_filter: true
+    risk_reward: true
+    groww_confirmation: true
 
 # ------------------------------------------------------------
 # 11. VOLUME CONFIRMATION

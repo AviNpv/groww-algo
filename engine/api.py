@@ -421,7 +421,7 @@ def strategy_chart(req: ChartRequest) -> dict:
 
     score = float(row.get("score") or 0)
     confirmations = int(row.get("confirmations") or 0)
-    min_score = float(cfg("entry", "minimum_score", default=cfg("entry", "min_score", default=0)))
+    min_score = float(cfg("entry", "minimum_score", default=cfg("entry", "min_score", default=60)))
     min_conf = int(cfg("entry", "required_confirmations",
                        default=cfg("entry", "min_confirmations", default=5)))
     require_trend = bool(cfg("entry", "trend", "ema_alignment",

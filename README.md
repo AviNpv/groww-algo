@@ -116,10 +116,10 @@ groww-algo/
      when available — Groww has **no fundamentals endpoint**, so the technical
      score stands alone when they are not.
    - V4 100-point score: trend 22, momentum 16, price pattern 16, volume 14,
-     market/sector 12, stock quality 10, risk quality 10. `QUALIFIED` needs 0+ (temporary diagnostic from 85)
+     market/sector 12, stock quality 10, risk quality 10. `QUALIFIED` needs 60+ (test override from 85)
      with all 5 factor confirmations ≥ 50 %.
 
-2. **Entry** — long gates: qualified status, score ≥ 0 (temporary diagnostic), 0 confirmations,
+2. **Entry** — long gates: qualified status, score ≥ 60 (test floor), 5 confirmations,
    EMA20 > EMA50 > EMA200, price above VWAP, RSI 55–72, ADX ≥ 20, relative
    volume ≥ 1.5×, ATR 0.4–3.5 %, R:R ≥ 2, closed candle, and fresh Groww
    confirmation. Yahoo is scanning-only in V4.
@@ -199,7 +199,7 @@ deterministic scanner/broker path is unchanged. When enabled:
    Adversarial Critic and Risk Analyst. The Critic and Risk Analyst are mandatory.
 3. A deterministic debate rejects any candidate with an unresolved critical
    objection. It never asks a model to arbitrate.
-4. A separate deterministic rule engine re-checks session, freshness, score ≥0,
+4. A separate deterministic rule engine re-checks session, freshness, score ≥60,
    R:R ≥2, stop/target, sizing, exposure, daily loss and duplicates. Agents
    cannot bypass it.
 5. A single gate runs before `broker.buy`. If the model, debate, rule engine or
